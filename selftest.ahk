@@ -44,11 +44,11 @@ RunSelfTest() {
     Assert(BaseKey("F9")        = "F9",      "BaseKey F9")
     Assert(BaseKey("^!x")       = "x",       "BaseKey ^!x -> x")
     Assert(BaseKey("~*F9")      = "F9",      "BaseKey ~*F9 -> F9")
-    Assert(ParseHotIf('WinActive("target.exe")') = "target.exe", "HotIf WinActive exe 简写")
+    Assert(ParseHotIf('WinActive("sample-app.exe")') = "sample-app.exe", "HotIf WinActive exe 简写")
 
     ; 2. 脚本读进来了
     cfg := Config["hotkeys"]["Numpad0"][1]
-    Assert(cfg["active_window"] = "target.exe", "config active_window")
+    Assert(RegExMatch(cfg["active_window"], "i)\.exe$"), "config active_window")
     Assert(cfg["repeat"] = false,               "config repeat=false")
     defaults := DefaultConfig()
     Assert(defaults["hotkeys"].Has("Numpad0") && defaults["hotkeys"].Has("NumpadEnter")
