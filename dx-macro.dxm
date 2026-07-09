@@ -5,7 +5,7 @@
 #ExitKey ^!x
 ; #RequireAdmin
 
-#HotIf WinActive("psobbw.exe")
+#HotIf WinActive("target.exe")
 Numpad1::
     Send "{Down down}"
     Sleep 50

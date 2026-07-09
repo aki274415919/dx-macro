@@ -44,11 +44,11 @@ RunSelfTest() {
     Assert(BaseKey("Numpad1")   = "Numpad1", "BaseKey Numpad1")
     Assert(BaseKey("^!x")       = "x",       "BaseKey ^!x -> x")
     Assert(BaseKey("~*Numpad1") = "Numpad1", "BaseKey ~*Numpad1 -> Numpad1")
-    Assert(ParseHotIf('WinActive("psobbw.exe")') = "psobbw.exe", "HotIf WinActive exe 简写")
+    Assert(ParseHotIf('WinActive("target.exe")') = "target.exe", "HotIf WinActive exe 简写")
 
     ; 2. 脚本读进来了
     cfg := Config["hotkeys"]["Numpad1"]
-    Assert(cfg["active_window"] = "psobbw.exe", "config active_window")
+    Assert(cfg["active_window"] = "target.exe", "config active_window")
     Assert(cfg["repeat"] = false,               "config repeat=false")
 
     ; 3. 真实配置里的 actions 跑出正确的按键序列
