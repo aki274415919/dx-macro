@@ -6,16 +6,27 @@
 ; #RequireAdmin
 
 #HotIf WinActive("target.exe")
-Numpad1::
-    Send "{Down down}"
-    Sleep 50
-    Send "{Down up}"
-    Sleep 100
-    Send "{Left down}"
-    Sleep 50
-    Send "{Left up}"
-    Sleep 100
-    Send "{Left down}"
-    Sleep 50
-    Send "{Left up}"
+
+Numpad0::
+    Send "{Left}"
+    Sleep 80
+    Send "{Left}"
+    Sleep 80
+    Send "{Left}"
+Return
+
+NumpadEnter::
+    Send "{Right}"
+    Sleep 80
+    Send "{Right}"
+    Sleep 80
+    Send "{Right}"
+Return
+
+NumpadDot::
+    Send "{Down}"
+    Sleep 80
+    Send "{Right}"
+    Sleep 80
+    Send "{Right}"
 Return

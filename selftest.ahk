@@ -47,7 +47,7 @@ RunSelfTest() {
     Assert(ParseHotIf('WinActive("target.exe")') = "target.exe", "HotIf WinActive exe 简写")
 
     ; 2. 脚本读进来了
-    cfg := Config["hotkeys"]["Numpad1"][1]
+    cfg := Config["hotkeys"]["Numpad0"][1]
     Assert(cfg["active_window"] = "target.exe", "config active_window")
     Assert(cfg["repeat"] = false,               "config repeat=false")
 
@@ -58,8 +58,8 @@ RunSelfTest() {
     got := ""
     for e in Backend.log
         got .= e " "
-    want := "down:Down up:Down down:Left up:Left down:Left up:Left "
-    Assert(got = want, "action 序列 = Down,Left,Left  (得到: " Trim(got) ")")
+    want := "down:Left up:Left down:Left up:Left down:Left up:Left "
+    Assert(got = want, "action 序列 = Left,Left,Left  (得到: " Trim(got) ")")
     Assert(Backend.held.Count = 0, "跑完没有键卡在按下状态")
 
     ; 4. Tap = down -> hold -> up
