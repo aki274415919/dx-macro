@@ -36,6 +36,9 @@ Return
 
 ## 2. 运行脚本
 
+双击 `dx-macro.exe` 会打开简易 GUI 编辑器。
+同时会自动把 `.dxm` 后缀名注册到当前用户，之后可以直接双击 `.dxm` 运行。
+
 把 `.dxm` 文件拖到 `dx-macro.exe` 上。
 
 或者命令行运行：
@@ -44,27 +47,13 @@ Return
 dx-macro.exe "D:\macros\game.dxm"
 ```
 
-不传脚本时，默认读取 `dx-macro.exe` 同目录下的 `dx-macro.dxm`。
-
-想直接双击 `.dxm` 运行，先把 `dx-macro.exe` 放在本项目文件夹里，然后双击：
-
-```text
-register-dxm.bat
-```
-
-也可以用程序自己注册：
+也可以手动注册：
 
 ```powershell
 dx-macro.exe --register
 ```
 
 撤销后缀名关联：
-
-```text
-unregister-dxm.bat
-```
-
-或：
 
 ```powershell
 dx-macro.exe --unregister

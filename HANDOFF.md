@@ -12,14 +12,11 @@
 | `dx-macro.dxm` | 默认示例脚本 |
 | `selftest.ahk` | 自检 |
 | `run.bat` | 开发时跑脚本版 |
-| `register-dxm.bat` | 当前用户 `.dxm` 文件关联注册 |
-| `unregister-dxm.bat` | 撤销 `.dxm` 文件关联 |
-
 ## 运行行为
 
 - `dx-macro.exe <script.dxm>` 可以运行任意路径的脚本。
-- 不传参数时读取 exe 同目录的 `dx-macro.dxm`，没有则兼容读取旧的 `dx-macro.ini`。
-- `register-dxm.bat` 写 `HKCU\Software\Classes`，不需要管理员权限。
+- 编译后的 exe 不传参数时注册 `.dxm` 文件关联并打开 GUI 编辑器。
+- 开发脚本版不传参数时仍读取同目录的 `dx-macro.dxm`，没有则兼容读取旧的 `dx-macro.ini`。
 - 程序内 `--register` / `--unregister` 也能注册或撤销 `.dxm` 文件关联。
 - `--edit [path]` 打开简易编辑器。
 - 同一个热键可以按不同 `active_window` 分发；同一个热键同一个窗口重复配置会被校验拒绝。
@@ -82,5 +79,5 @@ Interception 后端已经实现，但当前环境没有完整硬件实测。
 - GUI 编辑器已存在，但只是基础版。
 - 录制器已存在，但只录制键盘点按和间隔。
 - `#Block` / `Call` 支持基础复用，还没有 `include`。
-- `.dxm` 文件关联通过 `register-dxm.bat` 或 `--register` 手动注册，不自动写注册表。
+- `.dxm` 文件关联写入 `HKCU\Software\Classes`，不需要管理员权限。
 - 不提交 release exe；需要本地构建。

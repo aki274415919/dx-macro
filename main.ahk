@@ -32,6 +32,12 @@ Main() {
     if HandleUtilityCommand()
         return
 
+    if (A_IsCompiled && A_Args.Length = 0) {
+        try RegisterFileAssociation()
+        ShowScriptEditor(ConfigPath())
+        return
+    }
+
     ; 脚本写错就在启动时炸，别等宏跑到一半
     try {
         Config := LoadConfig()
