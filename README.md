@@ -1,6 +1,11 @@
 # dx-macro 使用说明
 
-`dx-macro.exe` 是一个键盘宏运行器。你新建 `.dxm` 脚本，然后用 `dx-macro.exe` 跑它。
+`dx-macro.exe` 是一个独立的键盘宏运行器。普通使用不需要先安装 AutoHotkey。
+
+你只需要两个东西：
+
+- `dx-macro.exe`
+- 你的 `.dxm` 脚本
 
 ## 1. 新建脚本
 
@@ -41,6 +46,32 @@ dx-macro.exe "D:\macros\game.dxm"
 
 不传脚本时，默认读取 `dx-macro.exe` 同目录下的 `dx-macro.dxm`。
 
+想直接双击 `.dxm` 运行，先把 `dx-macro.exe` 放在本项目文件夹里，然后双击：
+
+```text
+register-dxm.bat
+```
+
+也可以用程序自己注册：
+
+```powershell
+dx-macro.exe --register
+```
+
+撤销后缀名关联：
+
+```text
+unregister-dxm.bat
+```
+
+或：
+
+```powershell
+dx-macro.exe --unregister
+```
+
+这只写当前用户注册表，不需要管理员权限。
+
 ## 3. 我映射到了哪个键？
 
 看 `::` 前面的内容：
@@ -74,6 +105,24 @@ F2::
     Send "{Right}"
 Return
 ```
+
+同一个键也可以在不同 App 里做不同动作：
+
+```ahk
+#HotIf WinActive("app1.exe")
+Numpad1::
+    Send "{Left}"
+Return
+
+#HotIf WinActive("app2.exe")
+Numpad1::
+    Send "{Right}"
+Return
+```
+
+同一个键、同一个 App 重复写两段会被拒绝，避免你以为两段都会跑。
+
+热键不能占用工具自己的控制键，例如 `F8`、`Ctrl+Alt+X`、`Ctrl+Alt+K`。保存/启动时会检查。
 
 ## 4. 窗口限制
 
@@ -124,7 +173,84 @@ Ctrl+Alt+K
 Return
 ```
 
-## 6. 常用控制键
+## 6. GUI 编辑
+
+运行后按：
+
+```text
+Ctrl+Alt+E
+```
+
+会打开当前脚本的简易编辑器。它不漂亮，但能做几件事：
+
+- 检查脚本
+- 保存脚本
+- 保存并运行
+- 注册 `.dxm` 后缀名
+
+也可以直接打开编辑器：
+
+```powershell
+dx-macro.exe --edit "D:\macros\game.dxm"
+```
+
+## 7. 录制按键
+
+运行后按：
+
+```text
+Ctrl+Alt+R
+```
+
+然后按一串键，按 `Esc` 结束。工具会把录制结果复制到剪贴板。
+
+录制器是基础版：记录点按和间隔，不记录复杂鼠标操作，也不保证适合所有游戏/软件。
+
+## 8. 长宏怎么维护
+
+先按 App 分段，再按热键分段，用空行和注释分块：
+
+```ahk
+#HotIf WinActive("target.exe")
+
+; 移动：下、左、左
+Numpad1::
+    Send "{Down down}"
+    Sleep 50
+    Send "{Down up}"
+
+    Sleep 100
+    Send "{Left down}"
+    Sleep 50
+    Send "{Left up}"
+
+    Sleep 100
+    Send "{Left down}"
+    Sleep 50
+    Send "{Left up}"
+Return
+```
+
+重复片段用 `#Block` + `Call`：
+
+```ahk
+#Block MoveLeft
+    Send "{Left down}"
+    Sleep 50
+    Send "{Left up}"
+Return
+
+#HotIf WinActive("target.exe")
+Numpad1::
+    Call MoveLeft
+    Sleep 100
+    Call MoveLeft
+Return
+```
+
+如果一个热键超过几十行，建议先拆成几个小热键调通，再用 `Call` 合并。
+
+## 9. 常用控制键
 
 | 按键 | 作用 |
 |---|---|
@@ -132,6 +258,8 @@ Return
 | `Ctrl+Alt+X` | 退出 |
 | `Ctrl+Alt+W` | 查看当前窗口 exe 名 |
 | `Ctrl+Alt+K` | 查键名和 `Send` 写法 |
+| `Ctrl+Alt+E` | 打开简易编辑器 |
+| `Ctrl+Alt+R` | 录制按键片段 |
 
 这些可以在脚本顶部改：
 
@@ -146,7 +274,7 @@ Return
 #PauseKey
 ```
 
-## 7. 管理员权限
+## 10. 管理员权限
 
 默认：
 
@@ -164,7 +292,7 @@ Return
 
 这样拒绝管理员权限时会直接退出。
 
-## 8. 硬输入
+## 11. 硬输入
 
 普通模式：
 
@@ -184,7 +312,7 @@ Return
 
 先用 `#DxHardInput off` 把脚本测通，再考虑硬输入。
 
-## 9. 完整示例
+## 12. 完整示例
 
 ```ahk
 #Requires dx-macro
@@ -211,7 +339,7 @@ Return
 
 这个脚本只在 `target.exe` 窗口里生效，按小键盘 `1` 触发。
 
-## 10. 不是完整 AHK
+## 13. 不是完整 AHK
 
 `.dxm` 不是完整 AutoHotkey。当前只支持键盘宏需要的这些语法：
 
@@ -223,8 +351,10 @@ Return
 - `#ExitKey`
 - `#HotIf true`
 - `#HotIf WinActive("xxx.exe")`
+- `#Block name`
 - `Hotkey::`
 - `Send`
 - `Sleep`
 - `Tap`
+- `Call`
 - `Return`

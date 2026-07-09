@@ -17,7 +17,9 @@
 ;          true  = 按住会顺序循环执行（上一遍跑完才跑下一遍）。
 
 LoadConfig() {
+    global LoadedConfigPath
     ini := ConfigPath()
+    LoadedConfigPath := ini
     if FileExist(ini)
         return LoadConfigFile(ini)
     return DefaultConfig()
@@ -25,7 +27,7 @@ LoadConfig() {
 
 
 ConfigPath() {
-    if (A_Args.Length > 0) {
+    if (A_Args.Length > 0 && SubStr(A_Args[1], 1, 2) != "--") {
         path := A_Args[1]
         if !FileExist(path)
             throw Error("找不到配置文件: " path)
@@ -46,14 +48,26 @@ LoadScriptConfig(path) {
         , "ask_admin", true, "require_admin", false
         , "interception_vid", 0, "interception_pid", 0)
     hotkeys := Map()
+    blocks := Map()
     activeWindow := ""
     repeat := false
     current := ""
+    currentCfg := ""
+    currentActions := ""
 
     for raw in StrSplit(FileRead(path, "UTF-8"), "`n", "`r") {
         line := Trim(raw)
         if (line = "" || SubStr(line, 1, 1) = ";")
             continue
+
+        if RegExMatch(line, "i)^#Block\s+(\w+)$", &m) {
+            current := "#Block " m[1]
+            currentActions := []
+            if blocks.Has(m[1])
+                throw Error("重复的 Block: " m[1])
+            blocks[m[1]] := currentActions
+            continue
+        }
 
         if (SubStr(line, 1, 1) = "#") {
             ParseScriptDirective(line, settings, &activeWindow, &repeat)
@@ -62,21 +76,31 @@ LoadScriptConfig(path) {
 
         if RegExMatch(line, "^(.+)::$", &m) {
             current := Trim(m[1])
-            hotkeys[current] := Map("active_window", activeWindow, "repeat", repeat, "actions", [])
+            currentCfg := Map("active_window", activeWindow, "repeat", repeat, "actions", [])
+            AddHotkeyConfig(hotkeys, current, currentCfg)
+            currentActions := currentCfg["actions"]
             continue
         }
 
         if RegExMatch(line, "i)^(return|exit)$") {
             current := ""
+            currentActions := ""
             continue
         }
 
         if (current = "")
             throw Error("action 不在任何热键下面: " raw)
-        hotkeys[current]["actions"].Push(ParseScriptAction(line))
+        currentActions.Push(ParseScriptAction(line))
     }
 
-    return Map("settings", settings, "hotkeys", hotkeys)
+    return Map("settings", settings, "hotkeys", hotkeys, "blocks", blocks)
+}
+
+
+AddHotkeyConfig(hotkeys, name, cfg) {
+    if !hotkeys.Has(name)
+        hotkeys[name] := []
+    hotkeys[name].Push(cfg)
 }
 
 
@@ -157,6 +181,8 @@ ParseScriptAction(text) {
             return Map("key_down", NeedValue(rest, "KeyDown"))
         case "keyup":
             return Map("key_up", NeedValue(rest, "KeyUp"))
+        case "call":
+            return Map("call", NeedValue(rest, "Call"))
     }
     throw Error("不支持的 action: " text)
 }
@@ -237,10 +263,10 @@ LoadIniConfig(path) {
             else if RegExMatch(key, "^action\d+$")
                 cfg["actions"].Push(ParseIniAction(val))
         }
-        hotkeys[hk] := cfg
+        AddHotkeyConfig(hotkeys, hk, cfg)
     }
 
-    return Map("settings", settings, "hotkeys", hotkeys)
+    return Map("settings", settings, "hotkeys", hotkeys, "blocks", Map())
 }
 
 
@@ -326,8 +352,9 @@ DefaultConfig() {
         ),
 
         "hotkeys", Map(
-            "Numpad1", Map(
-                "active_window", "psobbw.exe",
+            "Numpad1", [
+                Map(
+                "active_window", "target.exe",
                 "repeat", false,
                 "actions", [
                     Map("key_down", "Down"),
@@ -343,6 +370,7 @@ DefaultConfig() {
                     Map("key_up", "Left")
                 ]
             )
+            ]
 
             ; 再加热键就照抄上面一段，例如用 tap 简写（按下并在 hold 毫秒后松开）：
             ; , "Numpad2", Map(
@@ -354,6 +382,7 @@ DefaultConfig() {
             ;         Map("tap", "Left", "hold", 50)
             ;     ]
             ; )
-        )
+        ),
+        "blocks", Map()
     )
 }

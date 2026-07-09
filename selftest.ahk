@@ -33,7 +33,7 @@ Throws(fn) {
     return false
 }
 ; 一个只有单条 action 的最小配置，用来测校验器
-BadConfig(action) => Map("hotkeys", Map("Numpad1", Map("actions", [action])))
+BadConfig(action) => Map("hotkeys", Map("Numpad1", [Map("actions", [action])]))
 
 RunSelfTest()
 
@@ -47,7 +47,7 @@ RunSelfTest() {
     Assert(ParseHotIf('WinActive("target.exe")') = "target.exe", "HotIf WinActive exe 简写")
 
     ; 2. 脚本读进来了
-    cfg := Config["hotkeys"]["Numpad1"]
+    cfg := Config["hotkeys"]["Numpad1"][1]
     Assert(cfg["active_window"] = "target.exe", "config active_window")
     Assert(cfg["repeat"] = false,               "config repeat=false")
 
@@ -66,6 +66,13 @@ RunSelfTest() {
     Backend := MockBackend()
     Backend.Tap("Left", 10)
     Assert(Backend.log.Length = 2 && Backend.log[1] = "down:Left" && Backend.log[2] = "up:Left", "Tap 发出 down+up")
+
+    oldConfig := Config
+    Config := Map("blocks", Map("MoveLeft", [Map("tap", "Left")]))
+    Backend := MockBackend()
+    RunAction(Map("call", "MoveLeft"))
+    Assert(Backend.log.Length = 2 && Backend.log[1] = "down:Left" && Backend.log[2] = "up:Left", "Call 执行 Block")
+    Config := oldConfig
 
     ; 5. 宏中途异常 -> ReleaseAll 把按下的键全松开
     Backend := MockBackend()
@@ -106,6 +113,33 @@ RunSelfTest() {
     Assert(Throws(() => ValidateConfig(BadConfig(Map("sleep", -5)))),         "负数 sleep 被拒")
     Assert(Throws(() => ValidateConfig(BadConfig(Map("bogus", 1)))),          "未知 action 被拒")
     Assert(!Throws(() => ValidateConfig(BadConfig(Map("tap", "Left")))),      "合法 tap 通过")
+
+    multiApp := Map("hotkeys", Map("Numpad1", [
+        Map("active_window", "one.exe", "actions", [Map("tap", "a")]),
+        Map("active_window", "two.exe", "actions", [Map("tap", "b")])
+    ]))
+    Assert(!Throws(() => ValidateConfig(multiApp)), "同一热键可按不同 App 分发")
+
+    duplicateApp := Map("hotkeys", Map("Numpad1", [
+        Map("active_window", "one.exe", "actions", [Map("tap", "a")]),
+        Map("active_window", "one.exe", "actions", [Map("tap", "b")])
+    ]))
+    Assert(Throws(() => ValidateConfig(duplicateApp)), "同一热键同一 App 重复配置被拒")
+
+    blockConfig := Map(
+        "blocks", Map("MoveLeft", [Map("tap", "Left")]),
+        "hotkeys", Map("Numpad2", [Map("actions", [Map("call", "MoveLeft")])])
+    )
+    Assert(!Throws(() => ValidateConfig(blockConfig)), "Call 指向已存在 Block 时通过")
+
+    missingBlock := Map("hotkeys", Map("Numpad2", [Map("actions", [Map("call", "Missing")])]))
+    Assert(Throws(() => ValidateConfig(missingBlock)), "Call 指向不存在 Block 时被拒")
+
+    reservedConflict := Map(
+        "settings", Map("pause_key", "F8", "exit_key", "^!x"),
+        "hotkeys", Map("F8", [Map("actions", [Map("tap", "a")])])
+    )
+    Assert(Throws(() => ValidateConfig(reservedConflict)), "用户热键不能占用控制热键")
 
     settings := Map("backend", "sendinput")
     activeWindow := "", repeat := false
