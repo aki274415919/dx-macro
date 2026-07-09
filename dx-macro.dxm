@@ -1,9 +1,11 @@
 #Requires dx-macro
+#AskAdmin on
 #DxHardInput off
 #PauseKey F8
 #ExitKey ^!x
+; #RequireAdmin
 
-#HotIf WinActive("ahk_exe psobbw.exe")
+#HotIf WinActive("psobbw.exe")
 Numpad1::
     Send "{Down down}"
     Sleep 50

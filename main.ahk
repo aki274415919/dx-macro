@@ -39,6 +39,16 @@ Main() {
     }
 
     settings := Config.Has("settings") ? Config["settings"] : Map()
+    if !A_IsAdmin {
+        requireAdmin := settings.Has("require_admin") && settings["require_admin"]
+        askAdmin := !settings.Has("ask_admin") || settings["ask_admin"]
+        if (requireAdmin || askAdmin) {
+            if TryRelaunchAsAdmin()
+                ExitApp
+            if requireAdmin
+                ExitApp(1)
+        }
+    }
 
     try {
         Backend := InitBackend(settings)
@@ -59,12 +69,37 @@ Main() {
 
     ; 查前台窗口进程名，顺便复制到剪贴板，方便填 active_window
     SafeHotkey("^!w", ShowActiveProcess)
+    SafeHotkey("^!k", ShowKeySnippet)
 
     OnExit(OnExitHandler)
 
-    TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查前台进程: Ctrl+Alt+W",
+    TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查进程: Ctrl+Alt+W`n查键名: Ctrl+Alt+K",
         Type(Backend), pauseKey, exitKey), AppName " 已启动")
 }
+
+
+TryRelaunchAsAdmin() {
+    target := A_IsCompiled ? QuoteArg(A_ScriptFullPath)
+        : QuoteArg(A_AhkPath) " " QuoteArg(A_ScriptFullPath)
+    args := QuoteArgs(A_Args)
+    try {
+        Run("*RunAs " target (args = "" ? "" : " " args))
+        return true
+    } catch {
+        return false
+    }
+}
+
+
+QuoteArgs(args) {
+    out := ""
+    for arg in args
+        out .= (out = "" ? "" : " ") QuoteArg(arg)
+    return out
+}
+
+
+QuoteArg(value) => Chr(34) StrReplace(value, Chr(34), Chr(92) Chr(34)) Chr(34)
 
 
 ; GetKeySC/GetKeyVK 对无效键名返回 0（不抛异常），拿来当键名校验器。
@@ -203,6 +238,30 @@ ShowActiveProcess(*) {
     } catch as e {
         TrayTip("读取前台窗口失败: " e.Message, AppName)
     }
+}
+
+
+ShowKeySnippet(*) {
+    global AppName
+    TrayTip("按一个要写进脚本的键，10 秒内有效。", AppName)
+    ih := InputHook("L1 T10")
+    ih.KeyOpt("{All}", "E")
+    ih.Start()
+    ih.Wait()
+
+    key := ih.EndKey != "" ? ih.EndKey : ih.Input
+    if (key = "")
+        return
+
+    q := Chr(34)
+    snippet := "Send " q "{" key "}" q
+    text := "键名: " key
+        . "`n`n点按:`n" snippet
+        . "`n`n按下:`nSend " q "{" key " down}" q
+        . "`n`n松开:`nSend " q "{" key " up}" q
+        . "`n`nTap:`nTap " key " 50"
+    A_Clipboard := snippet
+    MsgBox(text "`n`n已复制点按写法。", AppName)
 }
 
 

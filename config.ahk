@@ -43,6 +43,7 @@ LoadConfigFile(path) {
 
 LoadScriptConfig(path) {
     settings := Map("backend", "sendinput", "pause_key", "F8", "exit_key", "^!x"
+        , "ask_admin", true, "require_admin", false
         , "interception_vid", 0, "interception_pid", 0)
     hotkeys := Map()
     activeWindow := ""
@@ -93,6 +94,10 @@ ParseScriptDirective(line, settings, &activeWindow, &repeat) {
         switch name {
             case "requires", "singleinstance":
                 return
+            case "requireadmin", "runasadmin":
+                settings["require_admin"] := true
+            case "askadmin":
+                settings["ask_admin"] := (value = "") ? true : ParseIniBool(value, "#AskAdmin")
             case "backend":
                 settings["backend"] := NeedValue(value, "#Backend")
             case "dxhardinput", "hardinput":
@@ -123,6 +128,8 @@ ParseHotIf(expr) {
     if RegExMatch(expr, "i)^ahk_exe\s+(.+)$", &m)
         return Trim(m[1])
     if RegExMatch(expr, "i)^WinActive\(`"ahk_exe\s+([^`"]+)`"\)$", &m)
+        return m[1]
+    if RegExMatch(expr, "i)^WinActive\(`"([^`"]+\.exe)`"\)$", &m)
         return m[1]
     throw Error("只支持 #HotIf WinActive(`"ahk_exe xxx.exe`")")
 }
@@ -199,6 +206,7 @@ LoadIniConfig(path) {
     }
 
     settings := Map("backend", "sendinput", "pause_key", "F8", "exit_key", "^!x"
+        , "ask_admin", true, "require_admin", false
         , "interception_vid", 0, "interception_pid", 0)
     if sections.Has("settings") {
         for pair in sections["settings"] {
@@ -206,6 +214,8 @@ LoadIniConfig(path) {
             switch key {
                 case "backend", "pause_key", "exit_key":
                     settings[key] := val
+                case "ask_admin", "require_admin":
+                    settings[key] := ParseIniBool(val, key)
                 case "interception_vid", "interception_pid":
                     settings[key] := ParseIniInt(val, key)
             }
@@ -308,6 +318,8 @@ DefaultConfig() {
             "backend",   "sendinput",   ; sendinput | interception
             "pause_key", "F8",          ; 暂停/恢复
             "exit_key",  "^!x",         ; 退出 (Ctrl+Alt+X)
+            "ask_admin", true,
+            "require_admin", false,
             ; 只有 backend=interception 时才用到，用 AHI 的 Monitor 工具查：
             "interception_vid", 0x0000,
             "interception_pid", 0x0000

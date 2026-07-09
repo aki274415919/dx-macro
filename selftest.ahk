@@ -44,6 +44,7 @@ RunSelfTest() {
     Assert(BaseKey("Numpad1")   = "Numpad1", "BaseKey Numpad1")
     Assert(BaseKey("^!x")       = "x",       "BaseKey ^!x -> x")
     Assert(BaseKey("~*Numpad1") = "Numpad1", "BaseKey ~*Numpad1 -> Numpad1")
+    Assert(ParseHotIf('WinActive("psobbw.exe")') = "psobbw.exe", "HotIf WinActive exe 简写")
 
     ; 2. 脚本读进来了
     cfg := Config["hotkeys"]["Numpad1"]
@@ -112,6 +113,10 @@ RunSelfTest() {
     Assert(settings["backend"] = "interception", "#DxHardInput on -> interception")
     ParseScriptDirective("#HardInput off", settings, &activeWindow, &repeat)
     Assert(settings["backend"] = "sendinput", "#HardInput off -> sendinput")
+    ParseScriptDirective("#RequireAdmin", settings, &activeWindow, &repeat)
+    Assert(settings["require_admin"] = true, "#RequireAdmin -> require_admin")
+    ParseScriptDirective("#AskAdmin off", settings, &activeWindow, &repeat)
+    Assert(settings["ask_admin"] = false, "#AskAdmin off -> ask_admin=false")
 
     Say("`nALL PASS")
     ExitApp(0)

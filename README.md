@@ -114,9 +114,11 @@ AutoHotkey64.exe      （你自己放进来，绿色版关键）
 
 ```ahk
 #Requires dx-macro
+#AskAdmin on
 #DxHardInput off
 #PauseKey F8
 #ExitKey ^!x
+; #RequireAdmin
 
 #HotIf WinActive("ahk_exe target.exe")
 Numpad1::
@@ -137,6 +139,9 @@ Return
 
 `#DxHardInput off` 是普通 SendInput；`#DxHardInput on` 是驱动层硬输入（Interception），
 需要先装 Interception/AHI，并填 `#InterceptionVid` / `#InterceptionPid`。
+
+`#AskAdmin on` 会在启动时先问一次管理员权限；你点“否”就继续普通权限。
+目标程序如果必须管理员运行，就取消注释 `#RequireAdmin`，拒绝提权时会直接退出。
 
 ### 支持的 action
 
@@ -211,6 +216,7 @@ dx-macro.exe "D:\macros\game.dxm"
 | `F8` | 暂停 / 恢复 |
 | `Ctrl+Alt+X` | 退出（退出时松开所有键） |
 | `Ctrl+Alt+W` | 显示并复制前台进程名 |
+| `Ctrl+Alt+K` | 按一个键，显示并复制 `Send "{Key}"` 写法 |
 
 托盘图标右键 → Exit 也能退。
 
@@ -266,13 +272,10 @@ Ahk2Exe.exe /in main.ahk /out dx-macro.exe /base AutoHotkey64.exe
 | 装好驱动后用 Interception 后端 | 一般不需要，个别环境需要 |
 
 要管理员运行：右键 `run.bat` → 以管理员身份运行。
-或在 `main.ahk` 顶部加：
+或在 `.dxm` 脚本顶部加：
 
 ```ahk
-if !A_IsAdmin {
-    Run '*RunAs "' A_AhkPath '" "' A_ScriptFullPath '"'
-    ExitApp
-}
+#RequireAdmin
 ```
 
 ---
