@@ -1,4 +1,12 @@
 *.exe
 *.zip
 *.bak
-lib/AutoHotInterception/
+.downloads/
+# AutoHotInterception（第三方，自己下载解压到 lib\ 和根目录，见 README）
+lib/AutoHotInterception.ahk
+lib/AutoHotInterception.dll
+lib/CLR.ahk
+lib/Unblocker.ps1
+lib/x64/
+lib/x86/
+Monitor.ahk

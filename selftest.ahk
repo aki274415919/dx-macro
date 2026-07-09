@@ -163,6 +163,59 @@ RunSelfTest() {
     ParseScriptDirective("#AskAdmin off", settings, &activeWindow, &repeat)
     Assert(settings["ask_admin"] = false, "#AskAdmin off -> ask_admin=false")
 
+    ; Interception 后端必须「抛异常」而不是让 AHI 把进程 ExitApp 掉。
+    ; 这个断言本身就是证据：如果 InterceptionBackend 又去先构造 AHI，
+    ; 驱动缺失时自检进程会被 ExitApp 干掉，根本跑不到 ALL PASS。
+    Assert(InterceptionDllPath() != "", "找得到 interception.dll")
+
+    caught := ""
+    try InterceptionBackend(Map("interception_vid", 0, "interception_pid", 0))
+    catch DriverMissingError
+        caught := "DriverMissingError"
+    catch as e
+        caught := Type(e)
+
+    if InterceptionDriverPresent() {
+        Assert(caught = "Error", "驱动已装但缺 VID/PID -> Error (得到: " caught ")")
+    } else {
+        Assert(caught = "DriverMissingError", "驱动没装 -> DriverMissingError (得到: " caught ")")
+    }
+
+    ; Send 拆组：纯 {Key} 序列走后端，含文本落回 SendInput
+    Assert(ParseSendGroups("hello") = "", "纯文本 -> 不拆组（走 SendInput）")
+    Assert(ParseSendGroups("{Left}abc") = "", "键+文本混合 -> 不拆组")
+    g := ParseSendGroups("{Left}{Right down}{Right up}")
+    Assert(IsObject(g) && g.Length = 3, "三个组")
+    Assert(g[1].key = "Left"  && g[1].state = "tap",  "组1 = Left tap")
+    Assert(g[2].key = "Right" && g[2].state = "down", "组2 = Right down")
+    Assert(g[3].key = "Right" && g[3].state = "up",   "组3 = Right up")
+    Assert(ParseSendGroups("{Left 3}") = "", "{Left 3} 重复次数 -> 交给 SendInput")
+
+    ; 录制器：down/up 事件流 -> 动作。相邻 down+up=Tap，交叠=分离，间隔=Sleep
+    seqTap := EmitRecording([{type:"down",key:"Left",t:1000}, {type:"up",key:"Left",t:1050}])
+    Assert(seqTap.Length = 1 && seqTap[1] = "    Tap Left 50", "相邻 down+up -> Tap 含按住时长 (得到: " (seqTap.Length ? seqTap[1] : "空") ")")
+
+    seqGap := EmitRecording([{type:"down",key:"Left",t:1000}, {type:"up",key:"Left",t:1050}
+                           , {type:"down",key:"Right",t:1200}, {type:"up",key:"Right",t:1230}])
+    Assert(seqGap.Length = 3 && seqGap[2] = "    Sleep 150", "两个 Tap 之间插入 Sleep (得到: " (seqGap.Length >= 2 ? seqGap[2] : "?") ")")
+
+    ; 交叠：Left 按住时 Right 按下再松开，Left 才松 -> 不能合成 Tap
+    seqOverlap := EmitRecording([{type:"down",key:"Left",t:0}, {type:"down",key:"Right",t:10}
+                              , {type:"up",key:"Right",t:20}, {type:"up",key:"Left",t:30}])
+    Assert(seqOverlap[1] = "    Send " Chr(34) "{Left down}" Chr(34), "交叠 -> Left down 分离 (得到: " seqOverlap[1] ")")
+
+    ; RunSend 端到端：纯 {Key} 序列真的走后端（不只是解析对）
+    Backend := MockBackend()
+    RunSend("{Left}{Right down}{Right up}")
+    got := ""
+    for e in Backend.log
+        got .= e " "
+    Assert(Trim(got) = "down:Left up:Left down:Right up:Right", "RunSend 把 {Key} 序列路由到后端 (得到: " Trim(got) ")")
+
+    Backend := MockBackend()
+    RunSend("hello")            ; 文本不该碰后端（走 SendInput）
+    Assert(Backend.log.Length = 0, "RunSend 文本不经过后端")
+
     Say("`nALL PASS")
     ExitApp(0)
 }

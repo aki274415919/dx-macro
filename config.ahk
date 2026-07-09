@@ -205,6 +205,36 @@ ParseSendAction(value) {
 }
 
 
+; 把 Send 字符串拆成按键组，供后端逐个执行（硬输入也能走）。
+; 整串必须都是 {Key} / {Key down} / {Key up}，否则返回 ""（含文本，只能普通注入）。
+; 返回: [{key, state:"tap"|"down"|"up"}, ...]
+ParseSendGroups(value) {
+    value := Trim(value)
+    if (value = "" || InStr(value, "{") != 1)
+        return ""
+
+    groups := []
+    pos := 1
+    while (pos <= StrLen(value)) {
+        ; \G 从 pos 处锚定；用 ^ 的话只会锚到整串开头，第二组起就匹配不上
+        if !RegExMatch(value, "\G\{([^{}]+)\}", &m, pos)
+            return ""                       ; 有不在花括号里的内容 -> 文本
+        parts := Words(m[1])
+        key := parts[1]
+        if (parts.Length = 1)
+            groups.Push({key: key, state: "tap"})
+        else if (parts.Length = 2 && StrLower(parts[2]) = "down")
+            groups.Push({key: key, state: "down"})
+        else if (parts.Length = 2 && StrLower(parts[2]) = "up")
+            groups.Push({key: key, state: "up"})
+        else
+            return ""                       ; {Left 3} 之类的重复次数，交给 SendInput
+        pos += StrLen(m[0])
+    }
+    return groups.Length ? groups : ""
+}
+
+
 LoadIniConfig(path) {
     sections := Map()
     section := ""

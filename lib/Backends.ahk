@@ -50,29 +50,96 @@ class SendInputBackend extends IInputBackend {
 
 
 ; ------------------------------------------------------------
+;  Interception 驱动探测
+;
+;  AHI 是别人的库，我们不改它。但要知道它的失败方式：
+;  AutoHotInterception.__New() 和 GetKeyboardId() 在失败时是
+;  MsgBox + ExitApp，不是 throw。一旦走进去，外层的 try/catch
+;  和「回退到 SendInput」全都不会执行，进程直接没了。
+;
+;  所以：凡是能自己查的，都在碰 AHI 之前查完。
+;  驱动装没装 → 直接问 interception.dll。它是用户态 DLL，
+;  没有驱动也能 LoadLibrary，但 interception_create_context() 会返回 0。
+; ------------------------------------------------------------
+class DriverMissingError extends Error {
+}
+
+
+; 脚本版 A_ScriptDir 是项目根，编译版是 exe 所在目录 —— AHI 两边都用 Lib\，
+; 所以这一个表达式两边都对。（Windows 路径不区分大小写，lib\ 就是 Lib\）
+InterceptionDir() => A_ScriptDir "\Lib"
+
+
+InterceptionDllPath() {
+    bitness := (A_PtrSize = 8) ? "x64" : "x86"
+    dll := InterceptionDir() "\" bitness "\interception.dll"
+    return FileExist(dll) ? dll : ""
+}
+
+
+; 驱动装没装。interception.dll 是用户态 DLL，没有驱动也能 LoadLibrary，
+; 但 interception_create_context() 会返回 0。
+InterceptionDriverPresent() {
+    dll := InterceptionDllPath()
+    if (dll = "")
+        return false
+
+    h := DllCall("LoadLibrary", "Str", dll, "Ptr")
+    if !h
+        return false
+
+    ctx := 0
+    try ctx := DllCall(dll "\interception_create_context", "Ptr")
+    if ctx
+        DllCall(dll "\interception_destroy_context", "Ptr", ctx)
+    DllCall("FreeLibrary", "Ptr", h)
+    return ctx != 0
+}
+
+
+; ------------------------------------------------------------
 ;  B. Interception 后端 —— 驱动层键盘输入
-;  需要: 1) 安装 Interception 驱动
+;  需要: 1) 安装 Interception 驱动（装完要重启）
 ;        2) lib\AutoHotInterception\ 放好 AHI
-;        3) config.ahk 填 interception_vid / interception_pid
+;        3) 脚本里写 #InterceptionVid / #InterceptionPid
 ;  说明见 README「Interception 后端」一节。
 ; ------------------------------------------------------------
 class InterceptionBackend extends IInputBackend {
     __New(settings) {
         super.__New()
 
+        ; 顺序是有意的：先查文件，再查驱动，最后才构造 AHI。
         if !IsSet(AutoHotInterception)
-            throw Error("找不到 AutoHotInterception。请把 AHI 解压到 lib\AutoHotInterception\")
+            throw Error("找不到 AutoHotInterception.ahk，请把 AHI 放到 lib\ 下")
+        if (InterceptionDllPath() = "")
+            throw Error("缺少 lib\" ((A_PtrSize = 8) ? "x64" : "x86") "\interception.dll")
+        if !FileExist(InterceptionDir() "\AutoHotInterception.dll")
+            throw Error("缺少 lib\AutoHotInterception.dll")
 
-        this.AHI := AutoHotInterception()
+        if !InterceptionDriverPresent()
+            throw DriverMissingError("没有检测到 Interception 驱动。")
 
         vid := settings.Has("interception_vid") ? settings["interception_vid"] : 0
         pid := settings.Has("interception_pid") ? settings["interception_pid"] : 0
         if (!vid || !pid)
-            throw Error("请先在 config.ahk 填 interception_vid / interception_pid（用 AHI 的 Monitor.ahk 查）")
+            throw Error("脚本里没写 #InterceptionVid / #InterceptionPid。`n"
+                . "跑一下项目根目录的 Monitor.ahk，在你的键盘上按个键，就能看到 VID/PID。")
 
-        this.id := this.AHI.GetKeyboardId(vid, pid)
+        this.AHI := AutoHotInterception()
+
+        ; 不用 AHI.GetKeyboardId()：它找不到设备时会 MsgBox + ExitApp。
+        ; GetDeviceList() 只是查询，安全。
+        this.id := this.FindKeyboard(vid, pid)
         if !this.id
-            throw Error(Format("按 VID=0x{:04X} PID=0x{:04X} 找不到键盘设备", vid, pid))
+            throw Error(Format("没找到 VID=0x{:04X} PID=0x{:04X} 的键盘。用 Monitor.ahk 确认一下。", vid, pid))
+    }
+
+    FindKeyboard(vid, pid) {
+        for id, dev in this.AHI.GetDeviceList() {
+            if (!dev.IsMouse && dev.VID = vid && dev.PID = pid)
+                return id
+        }
+        return 0
     }
 
     ; GetKeySC() 是 AHK 内建函数，把键名转成扫描码。

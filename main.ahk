@@ -11,13 +11,14 @@
 #MaxThreadsPerHotkey 1
 
 #Include lib\Backends.ahk
-#Include *i lib\AutoHotInterception\AutoHotInterception.ahk
+#Include *i lib\AutoHotInterception.ahk
 #Include config.ahk
 
 AppName := "dx-macro"
 Config  := ""
 Paused  := false
 Backend := ""
+InterceptionUrl := "https://github.com/oblitum/Interception/releases"
 
 ; 只有直接运行 main.ahk 时才启动；被 selftest.ahk #Include 时不启动。
 if (A_IsCompiled || A_LineFile = A_ScriptFullPath)
@@ -61,8 +62,11 @@ Main() {
 
     try {
         Backend := InitBackend(settings)
+    } catch DriverMissingError as e {
+        OfferInterceptionDownload()
+        Backend := SendInputBackend()
     } catch as e {
-        MsgBox("后端初始化失败：`n" e.Message "`n`n已回退到 SendInput 后端。", AppName)
+        MsgBox("硬输入后端起不来：`n`n" e.Message "`n`n先用 SendInput 继续运行。", AppName, "Icon!")
         Backend := SendInputBackend()
     }
 
@@ -82,10 +86,54 @@ Main() {
     SafeHotkey("^!e", ShowCurrentScriptEditor)
     SafeHotkey("^!r", RecordSnippet)
 
+    SetupTray(pauseKey)
     OnExit(OnExitHandler)
 
-    TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查进程: Ctrl+Alt+W`n查键名: Ctrl+Alt+K`n编辑: Ctrl+Alt+E`n录制: Ctrl+Alt+R",
+    TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查进程: Ctrl+Alt+W`n查键名: Ctrl+Alt+K`n编辑: Ctrl+Alt+E`n录制: Ctrl+Alt+R`n重载: 托盘菜单",
         Type(Backend), pauseKey, exitKey), AppName " 已启动")
+}
+
+
+SetupTray(pauseKey) {
+    tray := A_TrayMenu
+    tray.Delete()                                  ; 去掉 AHK 默认项，换成我们自己的
+    tray.Add("编辑脚本`tCtrl+Alt+E", (*) => ShowCurrentScriptEditor())
+    tray.Add("重载脚本", ReloadScript)
+    tray.Add("暂停/恢复`t" pauseKey, TogglePause)
+    tray.Add()
+    tray.Add("退出", (*) => ExitApp())
+    tray.Default := "编辑脚本`tCtrl+Alt+E"
+}
+
+
+; 原始需求里的「重载」。改完脚本不用手动关了再开。
+ReloadScript(*) {
+    global Backend, LoadedConfigPath
+    try Backend.ReleaseAll()        ; 先松键，别让重载把键卡在按下状态
+
+    if !A_IsCompiled {
+        Reload()
+        return
+    }
+    ; 编译版：重新拉一个自己，#SingleInstance Force 会顶掉当前进程
+    try Run(QuoteArg(A_ScriptFullPath) " " QuoteArg(LoadedConfigPath))
+    ExitApp()
+}
+
+
+; #DxHardInput on 但驱动没装：给个能点去下载的框，然后照常用 SendInput 跑。
+OfferInterceptionDownload() {
+    global AppName, InterceptionUrl
+    text := "脚本里写了 #DxHardInput on，但这台机器没装 Interception 驱动。"
+        . "`n`n现在先用 SendInput 继续运行——宏照常工作，只是不是驱动级输入。"
+        . "`n如果目标程序读不到 SendInput（比如用 Raw Input / DirectInput 的游戏），才需要装驱动。"
+        . "`n`n装驱动要下载 Interception，解压后以管理员运行："
+        . "`n    install-interception.exe /install"
+        . "`n装完必须重启。卸载是 /uninstall。"
+        . "`n`n现在打开下载页吗？"
+
+    if (MsgBox(text, AppName, "YesNo Icon?") = "Yes")
+        try Run(InterceptionUrl)
 }
 
 
@@ -306,11 +354,30 @@ RunAction(action, depth := 0) {
     else if action.Has("tap")
         Backend.Tap(action["tap"], action.Has("hold") ? action["hold"] : 50)
     else if action.Has("send")
-        SendInput(action["send"])          ; 原样透传给 SendInput，方便打字符串
+        RunSend(action["send"])
     else if action.Has("call")
         ExecuteActions(Config["blocks"][action["call"]], depth + 1)
     else
         throw Error("无法识别的 action")
+}
+
+
+; Send 字符串：纯 {Key} 序列走后端（硬输入也生效），含文本才落回 SendInput。
+RunSend(str) {
+    global Backend
+    groups := ParseSendGroups(str)
+    if (groups = "") {
+        SendInput(str)          ; 含文本，只能普通注入
+        return
+    }
+    for g in groups {
+        if (g.state = "tap")
+            Backend.Tap(g.key, 50)
+        else if (g.state = "down")
+            Backend.KeyDown(g.key)
+        else
+            Backend.KeyUp(g.key)
+    }
 }
 
 
@@ -363,32 +430,76 @@ ShowKeySnippet(*) {
 
 RecordSnippet(*) {
     global AppName
-    lines := []
-    last := A_TickCount
-    TrayTip("开始录制。按 Esc 停止，结果会复制到剪贴板。", AppName)
+    events := []
+    pressed := Map()            ; 当前按下的键，用来忽略系统自动重复
 
-    loop {
-        ih := InputHook("L1 T30")
-        ih.KeyOpt("{All}", "E")
-        ih.Start()
-        ih.Wait()
-
-        key := ih.EndKey != "" ? ih.EndKey : ih.Input
-        if (key = "" || key = "Escape")
-            break
-
-        delay := A_TickCount - last
-        if (delay > 30)
-            lines.Push("    Sleep " delay)
-        lines.Push("    Send " Chr(34) "{" key "}" Chr(34))
-        last := A_TickCount
+    OnDown(hook, vk, sc) {
+        if (vk = 0x1B) {        ; Esc 停止录制，本身不录
+            hook.Stop()
+            return
+        }
+        key := GetKeyName(Format("vk{:x}sc{:x}", vk, sc))
+        if (key = "" || pressed.Has(key))
+            return
+        pressed[key] := true
+        events.Push({type: "down", key: key, t: A_TickCount})
+    }
+    OnUp(hook, vk, sc) {
+        if (vk = 0x1B)
+            return
+        key := GetKeyName(Format("vk{:x}sc{:x}", vk, sc))
+        if (key = "" || !pressed.Has(key))
+            return
+        pressed.Delete(key)
+        events.Push({type: "up", key: key, t: A_TickCount})
     }
 
+    TrayTip("开始录制。正常操作，按 Esc 停止，结果复制到剪贴板。", AppName)
+    ih := InputHook()
+    ih.KeyOpt("{All}", "N")     ; N=通知但不拦截，正常操作能看到效果
+    ih.OnKeyDown := OnDown
+    ih.OnKeyUp := OnUp
+    ih.Start()
+    ih.Wait()
+
+    lines := EmitRecording(events)
     if (lines.Length = 0)
         return
     text := JoinLines(lines)
     A_Clipboard := text
     MsgBox("已复制录制片段：`n`n" text, AppName)
+}
+
+
+; 把 down/up 事件流转成 .dxm 动作。纯函数，方便自检。
+;  - down 紧跟自己的 up（中间没别的键）-> Tap 键名 按住毫秒
+;  - 交叠按键 -> 分开的 Send "{Key down}" / Send "{Key up}"
+;  - 事件之间的间隔 -> Sleep（<15ms 的忽略，算噪声）
+EmitRecording(events) {
+    lines := []
+    q := Chr(34)
+    i := 1
+    prevEnd := events.Length ? events[1].t : 0
+
+    while (i <= events.Length) {
+        e := events[i]
+        gap := e.t - prevEnd
+        if (gap >= 15)
+            lines.Push("    Sleep " gap)
+
+        if (e.type = "down" && i < events.Length
+            && events[i + 1].type = "up" && events[i + 1].key = e.key) {
+            hold := events[i + 1].t - e.t
+            lines.Push("    Tap " e.key " " Max(hold, 1))
+            prevEnd := events[i + 1].t
+            i += 2
+        } else {
+            lines.Push("    Send " q "{" e.key (e.type = "down" ? " down" : " up") "}" q)
+            prevEnd := e.t
+            i += 1
+        }
+    }
+    return lines
 }
 
 
@@ -409,36 +520,109 @@ ShowCurrentScriptEditor(*) {
 ShowScriptEditor(path) {
     global AppName
     text := FileExist(path) ? FileRead(path, "UTF-8") : ""
+
     g := Gui("+Resize", AppName " editor")
     g.SetFont("s10", "Consolas")
-    g.AddText("xm w760", "脚本: " path)
+    info := g.AddText("xm w760", "脚本: " path)
     edit := g.AddEdit("xm w760 h460 -Wrap WantTab", text)
     g.SetFont("s9", "Segoe UI")
-    g.AddButton("xm w90", "检查").OnEvent("Click", (*) => CheckEditor(edit))
-    g.AddButton("x+8 w90", "保存").OnEvent("Click", (*) => SaveEditor(path, edit, false))
-    g.AddButton("x+8 w110", "保存并运行").OnEvent("Click", (*) => SaveEditor(path, edit, true))
-    g.AddButton("x+8 w110", "注册 .dxm").OnEvent("Click", (*) => (RegisterFileAssociation(), MsgBox(".dxm 已注册。", AppName)))
-    g.AddButton("x+8 w90", "关闭").OnEvent("Click", (*) => g.Destroy())
+
+    st := {saved: text}         ; 记录最后一次保存的内容，用来判断有没有未保存改动
+
+    buttons := [g.AddButton("xm w90", "检查")
+              , g.AddButton("x+8 w90", "保存")
+              , g.AddButton("x+8 w110", "保存并运行")
+              , g.AddButton("x+8 w110", "注册 .dxm")
+              , g.AddButton("x+8 w90", "关闭")]
+
+    buttons[1].OnEvent("Click", (*) => CheckEditor(edit))
+    buttons[2].OnEvent("Click", (*) => SaveEditor(path, edit, false, st))
+    buttons[3].OnEvent("Click", (*) => SaveEditor(path, edit, true, st))
+    buttons[4].OnEvent("Click", (*) => SafeRegisterAssociation())
+    buttons[5].OnEvent("Click", (*) => CloseEditor(g, edit, st))
+
+    g.OnEvent("Size", ResizeEditor.Bind(info, edit, buttons))
+    g.OnEvent("Close", (*) => CloseEditor(g, edit, st))   ; 右上角 X 也走这里
     g.Show()
+}
+
+
+CloseEditor(g, edit, st) {
+    global AppName
+    if (edit.Value != st.saved) {
+        if (MsgBox("有未保存的修改，确定关闭吗？", AppName, "YesNo Icon!") != "Yes")
+            return
+    }
+    g.Destroy()
+}
+
+
+; +Resize 不会自动挪控件，得自己来，不然拉大窗口只有背景变大。
+ResizeEditor(info, edit, buttons, g, minMax, w, h) {
+    if (minMax = -1)          ; 最小化时窗口尺寸没意义
+        return
+
+    pad := 10, gap := 8
+    buttons[1].GetPos(, , &btnW, &btnH)
+    info.Move(pad, pad, w - 2 * pad)
+    edit.Move(pad, 38, w - 2 * pad, h - 38 - btnH - 2 * pad)
+
+    x := pad, y := h - btnH - pad
+    for b in buttons {
+        b.GetPos(, , &btnW)
+        b.Move(x, y)
+        x += btnW + gap
+    }
 }
 
 
 CheckEditor(edit) {
     global AppName
-    ValidateScriptText(edit.Value)
-    MsgBox("检查通过。", AppName)
+    try {
+        ValidateScriptText(edit.Value)
+    } catch as e {
+        MsgBox("脚本有问题：`n`n" e.Message, AppName, "Icon!")
+        return
+    }
+    MsgBox("检查通过。", AppName, "Iconi")
 }
 
 
-SaveEditor(path, edit, runAfter) {
+SaveEditor(path, edit, runAfter, st := "") {
     global AppName
-    ValidateScriptText(edit.Value)
-    if FileExist(path)
-        FileDelete(path)
-    FileAppend(edit.Value, path, "UTF-8")
-    if runAfter
+    try {
+        ValidateScriptText(edit.Value)
+    } catch as e {
+        MsgBox("没保存。脚本有问题：`n`n" e.Message, AppName, "Icon!")
+        return
+    }
+    try {
+        if FileExist(path)
+            FileDelete(path)
+        FileAppend(edit.Value, path, "UTF-8")
+    } catch as e {
+        MsgBox("保存失败：`n`n" e.Message, AppName, "Icon!")
+        return
+    }
+    if (st != "")
+        st.saved := edit.Value          ; 保存成功，清掉未保存标记
+    if runAfter {
+        ; 新实例会靠 #SingleInstance Force 顶掉当前进程，所以这后面不能再有代码。
         RunDxMacro(path)
-    MsgBox(runAfter ? "已保存并启动。" : "已保存。", AppName)
+        return
+    }
+    MsgBox("已保存。", AppName, "Iconi")
+}
+
+
+SafeRegisterAssociation() {
+    global AppName
+    try {
+        RegisterFileAssociation()
+        MsgBox(".dxm 已注册到当前用户。", AppName, "Iconi")
+    } catch as e {
+        MsgBox("注册失败：`n`n" e.Message, AppName, "Icon!")
+    }
 }
 
 

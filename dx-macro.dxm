@@ -1,6 +1,6 @@
-#Requires dx-macro
+﻿#Requires dx-macro
 #AskAdmin on
-#DxHardInput off
+#DxHardInput on
 #PauseKey F8
 #ExitKey ^!x
 ; #RequireAdmin

@@ -250,6 +250,9 @@ Return
 | `Ctrl+Alt+E` | 打开简易编辑器 |
 | `Ctrl+Alt+R` | 录制按键片段 |
 
+**重载**没有占热键，在托盘图标右键菜单里：编辑脚本 / 重载脚本 / 暂停恢复 / 退出。
+改完 `.dxm` 点「重载脚本」就生效，不用关了再开。重载前会先松开所有按下的键。
+
 这些可以在脚本顶部改：
 
 ```ahk
@@ -297,9 +300,21 @@ Return
 #InterceptionPid 0x0000
 ```
 
-硬输入需要额外安装 Interception/AutoHotInterception。没装时会回退到普通输入。
+硬输入需要额外安装 Interception 驱动。**没装也不会出问题**：启动时会弹一个框告诉你，
+问你要不要打开下载页，你点「否」它就用普通输入继续跑，宏照常工作。
+
+装驱动：下载 [Interception](https://github.com/oblitum/Interception/releases)，
+解压后以管理员运行 `install-interception.exe /install`，**装完必须重启**。
+卸载是 `install-interception.exe /uninstall`，同样要重启。
+
+VID/PID 不要猜：跑一下项目根目录的 `Monitor.ahk`，在你要用的那块键盘上按个键，
+看哪一行有反应，把它的 VID/PID 填进去。
 
 先用 `#DxHardInput off` 把脚本测通，再考虑硬输入。
+
+> 小键盘的坑：硬输入发的是扫描码，`Numpad1` 和 `NumpadEnd` 是同一个扫描码 `0x4F`，
+> 最终是 `1` 还是 `End` 取决于目标机器的 NumLock。普通输入发的是虚拟键码，没这个问题。
+> 宏里要输出小键盘键又必须稳的话，用方向键或字母键代替。
 
 ## 12. 完整示例
 
