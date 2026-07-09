@@ -33,7 +33,7 @@ Throws(fn) {
     return false
 }
 ; 一个只有单条 action 的最小配置，用来测校验器
-BadConfig(action) => Map("hotkeys", Map("Numpad1", [Map("actions", [action])]))
+BadConfig(action) => Map("hotkeys", Map("F9", [Map("actions", [action])]))
 
 RunSelfTest()
 
@@ -41,9 +41,9 @@ RunSelfTest() {
     global Backend, Config
 
     ; 1. 热键名 -> KeyWait 基础键名
-    Assert(BaseKey("Numpad1")   = "Numpad1", "BaseKey Numpad1")
+    Assert(BaseKey("F9")        = "F9",      "BaseKey F9")
     Assert(BaseKey("^!x")       = "x",       "BaseKey ^!x -> x")
-    Assert(BaseKey("~*Numpad1") = "Numpad1", "BaseKey ~*Numpad1 -> Numpad1")
+    Assert(BaseKey("~*F9")      = "F9",      "BaseKey ~*F9 -> F9")
     Assert(ParseHotIf('WinActive("target.exe")') = "target.exe", "HotIf WinActive exe 简写")
 
     ; 2. 脚本读进来了
@@ -52,7 +52,7 @@ RunSelfTest() {
     Assert(cfg["repeat"] = false,               "config repeat=false")
     defaults := DefaultConfig()
     Assert(defaults["hotkeys"].Has("Numpad0") && defaults["hotkeys"].Has("NumpadEnter")
-        && defaults["hotkeys"].Has("NumpadDot") && !defaults["hotkeys"].Has("Numpad1"),
+        && defaults["hotkeys"].Has("NumpadDot") && defaults["hotkeys"].Count = 3,
         "内置默认热键 = 0/Enter/Dot")
 
     ; 3. 真实配置里的 actions 跑出正确的按键序列
@@ -102,7 +102,7 @@ RunSelfTest() {
     Assert(threw, "IInputBackend 抽象方法抛异常")
 
     ; 8. 键名校验器
-    Assert(IsRealKey("Numpad1") && IsRealKey("NumpadEnd") && IsRealKey("Left"), "合法键名通过")
+    Assert(IsRealKey("F9") && IsRealKey("NumpadEnd") && IsRealKey("Left"), "合法键名通过")
     Assert(!IsRealKey("Downn") && !IsRealKey(""), "非法键名被拒")
 
     ; 9. 启动时校验：好配置放行，坏配置必须炸
@@ -114,9 +114,9 @@ RunSelfTest() {
 
     oldConfig := Config
     Config := Map("hotkeys", Map("Numpad0", [Map("actions", [Map("tap", "Left")])]))
-    Assert(SelectHotkeyConfig("Numpad1") = "", "不存在的热键被忽略")
+    Assert(SelectHotkeyConfig("F10") = "", "不存在的热键被忽略")
     Config := ""
-    Assert(SelectHotkeyConfig("Numpad1") = "", "未加载配置时热键被忽略")
+    Assert(SelectHotkeyConfig("F10") = "", "未加载配置时热键被忽略")
     Config := oldConfig
 
     Assert(Throws(() => ValidateConfig(Map("hotkeys", Map()))), "空 hotkeys 被拒")
@@ -125,13 +125,13 @@ RunSelfTest() {
     Assert(Throws(() => ValidateConfig(BadConfig(Map("bogus", 1)))),          "未知 action 被拒")
     Assert(!Throws(() => ValidateConfig(BadConfig(Map("tap", "Left")))),      "合法 tap 通过")
 
-    multiApp := Map("hotkeys", Map("Numpad1", [
+    multiApp := Map("hotkeys", Map("F9", [
         Map("active_window", "one.exe", "actions", [Map("tap", "a")]),
         Map("active_window", "two.exe", "actions", [Map("tap", "b")])
     ]))
     Assert(!Throws(() => ValidateConfig(multiApp)), "同一热键可按不同 App 分发")
 
-    duplicateApp := Map("hotkeys", Map("Numpad1", [
+    duplicateApp := Map("hotkeys", Map("F9", [
         Map("active_window", "one.exe", "actions", [Map("tap", "a")]),
         Map("active_window", "one.exe", "actions", [Map("tap", "b")])
     ]))

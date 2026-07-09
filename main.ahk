@@ -314,7 +314,7 @@ RunAction(action, depth := 0) {
 }
 
 
-; "^!x" -> "x"，"~Numpad1" -> "Numpad1"。KeyWait 只认基础键名。
+; "^!x" -> "x"，"~F9" -> "F9"。KeyWait 只认基础键名。
 BaseKey(hk) => RegExReplace(hk, "^[\^!+#<>*~$ ]+", "")
 
 
