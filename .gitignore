@@ -1,0 +1,4 @@
+*.exe
+*.zip
+*.bak
+lib/AutoHotInterception/

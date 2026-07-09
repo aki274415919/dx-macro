@@ -1,0 +1,19 @@
+#Requires dx-macro
+#DxHardInput off
+#PauseKey F8
+#ExitKey ^!x
+
+#HotIf WinActive("ahk_exe psobbw.exe")
+Numpad1::
+    Send "{Down down}"
+    Sleep 50
+    Send "{Down up}"
+    Sleep 100
+    Send "{Left down}"
+    Sleep 50
+    Send "{Left up}"
+    Sleep 100
+    Send "{Left down}"
+    Sleep 50
+    Send "{Left up}"
+Return
