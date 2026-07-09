@@ -352,28 +352,49 @@ DefaultConfig() {
         ),
 
         "hotkeys", Map(
-            "Numpad1", [
+            "Numpad0", [
                 Map(
                 "active_window", "target.exe",
                 "repeat", false,
                 "actions", [
-                    Map("key_down", "Down"),
-                    Map("sleep", 50),
-                    Map("key_up", "Down"),
-                    Map("sleep", 100),
-                    Map("key_down", "Left"),
-                    Map("sleep", 50),
-                    Map("key_up", "Left"),
-                    Map("sleep", 100),
-                    Map("key_down", "Left"),
-                    Map("sleep", 50),
-                    Map("key_up", "Left")
+                    Map("tap", "Left", "hold", 50),
+                    Map("sleep", 80),
+                    Map("tap", "Left", "hold", 50),
+                    Map("sleep", 80),
+                    Map("tap", "Left", "hold", 50)
+                ]
+            )
+            ],
+            "NumpadEnter", [
+                Map(
+                "active_window", "target.exe",
+                "repeat", false,
+                "actions", [
+                    Map("tap", "Right", "hold", 50),
+                    Map("sleep", 80),
+                    Map("tap", "Right", "hold", 50),
+                    Map("sleep", 80),
+                    Map("tap", "Right", "hold", 50)
+                ]
+            )
+            ],
+            "NumpadDot", [
+                Map(
+                "active_window", "target.exe",
+                "repeat", false,
+                "actions", [
+                    Map("tap", "Down", "hold", 50),
+                    Map("sleep", 80),
+                    Map("tap", "Right", "hold", 50),
+                    Map("sleep", 80),
+                    Map("tap", "Right", "hold", 50)
                 ]
             )
             ]
 
             ; 再加热键就照抄上面一段，例如用 tap 简写（按下并在 hold 毫秒后松开）：
-            ; , "Numpad2", Map(
+            ; , "Numpad2", [
+            ;     Map(
             ;     "active_window", "",
             ;     "repeat", false,
             ;     "actions", [
@@ -382,6 +403,7 @@ DefaultConfig() {
             ;         Map("tap", "Left", "hold", 50)
             ;     ]
             ; )
+            ; ]
         ),
         "blocks", Map()
     )

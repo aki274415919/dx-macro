@@ -271,6 +271,8 @@ RunHotkey(name, *) {
 
 SelectHotkeyConfig(name) {
     global Config
+    if (!IsObject(Config) || !Config.Has("hotkeys") || !Config["hotkeys"].Has(name))
+        return ""
     fallback := ""
     for cfg in Config["hotkeys"][name] {
         app := cfg.Has("active_window") ? cfg["active_window"] : ""

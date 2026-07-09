@@ -50,6 +50,10 @@ RunSelfTest() {
     cfg := Config["hotkeys"]["Numpad0"][1]
     Assert(cfg["active_window"] = "target.exe", "config active_window")
     Assert(cfg["repeat"] = false,               "config repeat=false")
+    defaults := DefaultConfig()
+    Assert(defaults["hotkeys"].Has("Numpad0") && defaults["hotkeys"].Has("NumpadEnter")
+        && defaults["hotkeys"].Has("NumpadDot") && !defaults["hotkeys"].Has("Numpad1"),
+        "内置默认热键 = 0/Enter/Dot")
 
     ; 3. 真实配置里的 actions 跑出正确的按键序列
     Backend := MockBackend()
@@ -107,6 +111,13 @@ RunSelfTest() {
     catch
         threw := true
     Assert(!threw, "真实脚本通过校验")
+
+    oldConfig := Config
+    Config := Map("hotkeys", Map("Numpad0", [Map("actions", [Map("tap", "Left")])]))
+    Assert(SelectHotkeyConfig("Numpad1") = "", "不存在的热键被忽略")
+    Config := ""
+    Assert(SelectHotkeyConfig("Numpad1") = "", "未加载配置时热键被忽略")
+    Config := oldConfig
 
     Assert(Throws(() => ValidateConfig(Map("hotkeys", Map()))), "空 hotkeys 被拒")
     Assert(Throws(() => ValidateConfig(BadConfig(Map("key_down", "Downn")))), "键名拼错被拒")
