@@ -12,24 +12,24 @@
 
 Numpad0::
     Send "{Left}"
-    Sleep 80
+    Sleep 480
     Send "{Left}"
-    Sleep 80
+    Sleep 480
     Send "{Left}"
 Return
 
 NumpadAdd::
     Send "{Right}"
-    Sleep 80
+    Sleep 480
     Send "{Right}"
-    Sleep 80
+    Sleep 480
     Send "{Right}"
 Return
 
 NumpadDot::
     Send "{Down}"
-    Sleep 80
+    Sleep 300
     Send "{Right}"
-    Sleep 80
+    Sleep 450
     Send "{Right}"
 Return

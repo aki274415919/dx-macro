@@ -283,6 +283,17 @@ RunSelfTest() {
         try DirDelete(includeDir)
     }
 
+    ; 进程级占用：HotIf 上下文判断。目标窗口没激活 -> 无匹配 -> 热键透传给别的进程。
+    Config := Map("hotkeys", Map("Numpad0",
+        [Map("active_window", "no-such-window-xyz.exe", "actions", [Map("tap", "a")])]))
+    Assert(SelectHotkeyConfig("Numpad0") = "", "目标窗口未激活 -> 无匹配（热键透传）")
+    Assert(!HotkeyContextActive("Numpad0"), "HotkeyContextActive=false -> 不吞键")
+
+    Config := Map("hotkeys", Map("Numpad0",
+        [Map("active_window", "", "actions", [Map("tap", "a")])]))
+    Assert(SelectHotkeyConfig("Numpad0") != "", "全局热键 -> 始终匹配（处处生效）")
+    Assert(HotkeyContextActive("Numpad0"), "HotkeyContextActive=true -> 吞键并跑宏")
+
     Say("`nALL PASS")
     ExitApp(0)
 }

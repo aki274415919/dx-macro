@@ -477,13 +477,24 @@ RegisterHotkeys() {
     for name, variants in Config["hotkeys"] {
         if (Type(Backend) = "InterceptionBackend" && IsSimpleHardHotkey(name))
             SafeHardHotkey(name)
-        else
+        else {
+            ; 进程级占用：只在「当前前台窗口有匹配配置」时激活热键并吞键，
+            ; 不匹配的进程上这个键原样透传，不被全局吃掉。
+            ; （active_window="" 的全局热键总有兜底配置，所以处处生效，符合预期。）
+            HotIf(HotkeyContextActive.Bind(name))
             SafeHotkey(name, RunHotkey.Bind(name))
+            HotIf()          ; 复位，别把上下文带给后面注册的暂停/退出/辅助热键
+        }
     }
+    HotIf()                  ; 保险再复位一次
 }
 
 
 IsSimpleHardHotkey(name) => (name = BaseKey(name) && GetKeySC(name) != 0)
+
+
+; HotIf 上下文判断：有匹配配置就激活（吞键），没有就让键透传。必须快、无副作用。
+HotkeyContextActive(name, *) => SelectHotkeyConfig(name) != ""
 
 
 SafeHardHotkey(name) {
@@ -631,13 +642,24 @@ TogglePause(*) {
 
 ShowActiveProcess(*) {
     global AppName
+    ; "A"=当前激活窗口。从托盘菜单点会丢焦点，或焦点在开始菜单/桌面时，
+    ; 根本没有前台窗口，WinGetProcessName("A") 会抛 "Target window not found"。
+    ; 先用 WinExist 拿 hwnd，为空就给能照做的提示，而不是糊涂的报错。
+    hwnd := WinExist("A")
+    if !hwnd {
+        TrayTip("现在没有前台窗口。`n请先点一下目标程序窗口，再按快捷键 Ctrl+Alt+W。`n"
+            . "（从托盘菜单点会夺走目标焦点，所以这个要用快捷键。）", AppName)
+        return
+    }
     try {
-        exe := WinGetProcessName("A")
-        A_Clipboard := exe
-        TrayTip("前台进程: " exe "`n（已复制到剪贴板）`n标题: " WinGetTitle("A"), AppName)
+        exe := WinGetProcessName(hwnd)
+        title := WinGetTitle(hwnd)
     } catch as e {
         TrayTip("读取前台窗口失败: " e.Message, AppName)
+        return
     }
+    A_Clipboard := exe
+    TrayTip("前台进程: " exe "`n（已复制到剪贴板，填进 #HotIf WinActive 用）`n标题: " title, AppName)
 }
 
 
