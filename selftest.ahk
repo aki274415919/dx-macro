@@ -18,6 +18,18 @@ class MockBackend extends IInputBackend {
     }
 }
 
+; 假硬后端：只记录订阅/退订，不碰真驱动。用来测 ReconcileHardHotkeys 的对账逻辑。
+class MockHardBackend extends IInputBackend {
+    __New() {
+        super.__New()
+        this.subs := Map()
+    }
+    KeyDown(key) => 0
+    KeyUp(key) => 0
+    EnsureSubscribed(sc, callback) => this.subs[sc] := true
+    EnsureUnsubscribed(sc) => (this.subs.Has(sc) ? this.subs.Delete(sc) : 0)
+}
+
 Say(s)  => FileAppend(s "`n", "*")
 Assert(cond, msg) {
     if !cond {
@@ -293,6 +305,32 @@ RunSelfTest() {
         [Map("active_window", "", "actions", [Map("tap", "a")])]))
     Assert(SelectHotkeyConfig("Numpad0") != "", "全局热键 -> 始终匹配（处处生效）")
     Assert(HotkeyContextActive("Numpad0"), "HotkeyContextActive=true -> 吞键并跑宏")
+
+    ; 硬模式对账：ReconcileHardHotkeys 用同一套判断决定订阅/退订，暂停时全退订。
+    ; 用 MockHardBackend 记录订阅调用，不碰真驱动。
+    global Backend, HardHotkeys, Paused
+    Backend := MockHardBackend()
+    HardHotkeys := [{name: "Numpad0", sc: 0x52, callback: (*) => 0}]
+
+    Config := Map("hotkeys", Map("Numpad0",
+        [Map("active_window", "no-such-window-xyz.exe", "actions", [Map("tap", "a")])]))
+    Paused := false
+    ReconcileHardHotkeys()
+    Assert(!Backend.subs.Has(0x52), "目标窗口没激活 -> 不订阅（键透传）")
+
+    Config := Map("hotkeys", Map("Numpad0",
+        [Map("active_window", "", "actions", [Map("tap", "a")])]))
+    ReconcileHardHotkeys()
+    Assert(Backend.subs.Has(0x52), "全局硬热键 -> 订阅（拦截）")
+
+    Paused := true
+    ReconcileHardHotkeys()
+    Assert(!Backend.subs.Has(0x52), "暂停 -> 全部退订（键放开）")
+    Paused := false
+
+    ; poll_ms 校验
+    Assert(Throws(() => ValidateConfig(Map("hotkeys", Map("F9", [Map("actions", [Map("tap", "a")])]),
+        "settings", Map("poll_ms", 0)))), "poll_ms=0 被拒")
 
     Say("`nALL PASS")
     ExitApp(0)

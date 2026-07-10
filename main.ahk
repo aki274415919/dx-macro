@@ -21,6 +21,7 @@ Backend := ""
 InterceptionUrl := "https://github.com/oblitum/Interception/releases"
 HotkeyPause := "F8"      ; 帮助/托盘要用，Main 里按脚本设置覆盖
 HotkeyExit  := "^!x"
+HardHotkeys := []        ; 硬模式热键 [{name, sc, callback}]，供对账定时器用
 
 ; 只有直接运行 main.ahk 时才启动；被 selftest.ahk #Include 时不启动。
 if (A_IsCompiled || A_LineFile = A_ScriptFullPath)
@@ -103,6 +104,15 @@ Main() {
     SafeHotkey("^!e", ShowCurrentScriptEditor)
     SafeHotkey("^!r", RecordSnippet)
     SafeHotkey("^!h", ShowHelp)
+
+    ; 硬模式进程级占用：定时对账，按前台窗口动态拦/放硬热键。
+    ; poll_ms 越小切窗口响应越快、CPU 每秒多醒几次（仍很轻）；越大越省、切走后最多多拦这么久才放。
+    if (HardHotkeys.Length > 0) {
+        pollMs := settings.Has("poll_ms") ? settings["poll_ms"] : 200
+        pollMs := Max(pollMs, 30)          ; 下限 30ms，再快也只多费 CPU 没实际收益
+        ReconcileHardHotkeys()             ; 先对一次账，别干等第一拍
+        SetTimer(ReconcileHardHotkeys, pollMs)
+    }
 
     SetupTray()
     OnExit(OnExitHandler)
@@ -383,6 +393,9 @@ ValidateConfig(config) {
     settings := config.Has("settings") ? config["settings"] : Map()
     reserved := ReservedHotkeys(settings)
 
+    if (settings.Has("poll_ms") && (!IsInteger(settings["poll_ms"]) || settings["poll_ms"] < 1))
+        throw Error("#PollMs 必须是正整数（毫秒）")
+
     for name, variants in config["hotkeys"] {
         if !IsRealKey(BaseKey(name))
             throw Error("热键名无效: `"" name "`"")
@@ -471,22 +484,41 @@ InitBackend(settings) {
 
 
 RegisterHotkeys() {
-    global Config, Backend
+    global Config, Backend, HardHotkeys
+    HardHotkeys := []
     if !Config.Has("hotkeys")
         return
     for name, variants in Config["hotkeys"] {
         if (Type(Backend) = "InterceptionBackend" && IsSimpleHardHotkey(name))
-            SafeHardHotkey(name)
-        else {
-            ; 进程级占用：只在「当前前台窗口有匹配配置」时激活热键并吞键，
-            ; 不匹配的进程上这个键原样透传，不被全局吃掉。
-            ; （active_window="" 的全局热键总有兜底配置，所以处处生效，符合预期。）
-            HotIf(HotkeyContextActive.Bind(name))
-            SafeHotkey(name, RunHotkey.Bind(name))
-            HotIf()          ; 复位，别把上下文带给后面注册的暂停/退出/辅助热键
-        }
+            RegisterHardHotkey(name)
+        else
+            RegisterNormalHotkey(name)
     }
     HotIf()                  ; 保险再复位一次
+}
+
+
+; 普通(SendInput)模式的进程级占用：只在「当前前台窗口有匹配配置」时激活热键并吞键，
+; 不匹配的进程上这个键原样透传，不被全局吃掉。
+; （active_window="" 的全局热键总有兜底配置，所以处处生效，符合预期。）
+RegisterNormalHotkey(name) {
+    HotIf(HotkeyContextActive.Bind(name))
+    SafeHotkey(name, RunHotkey.Bind(name))
+    HotIf()                  ; 复位，别把上下文带给后面注册的暂停/退出/辅助热键
+}
+
+
+; 硬(Interception)模式：注册时只占位查冲突，不立刻订阅。
+; 真正的驱动层拦截由 ReconcileHardHotkeys 按前台窗口动态开关（进程级占用）。
+RegisterHardHotkey(name) {
+    global Backend, HardHotkeys, AppName
+    try {
+        sc := Backend.ReserveHotkey(name)
+        HardHotkeys.Push({name: name, sc: sc, callback: RunHardHotkey.Bind(name)})
+    } catch as e {
+        MsgBox("注册驱动热键失败: " name "`n" e.Message "`n`n已改用普通热键监听。", AppName, "Icon!")
+        RegisterNormalHotkey(name)
+    }
 }
 
 
@@ -497,13 +529,18 @@ IsSimpleHardHotkey(name) => (name = BaseKey(name) && GetKeySC(name) != 0)
 HotkeyContextActive(name, *) => SelectHotkeyConfig(name) != ""
 
 
-SafeHardHotkey(name) {
-    global Backend, AppName
-    try {
-        Backend.SubscribeHotkey(name, RunHardHotkey.Bind(name))
-    } catch as e {
-        MsgBox("注册驱动热键失败: " name "`n" e.Message "`n`n已改用普通热键监听。", AppName, "Icon!")
-        SafeHotkey(name, RunHotkey.Bind(name))
+; 硬模式对账（定时器每 PollMs 毫秒调一次，也在暂停/恢复时立刻调一次）：
+; 目标窗口激活的硬热键 -> 订阅(拦截)；不激活的 -> 退订(透传)。暂停时全部退订。
+; 这是对账式的：漏掉一次窗口切换，下一拍会自动纠正，所以键不会长期卡死。
+ReconcileHardHotkeys() {
+    global HardHotkeys, Backend, Paused
+    if !HasMethod(Backend, "EnsureSubscribed")   ; 只有硬后端能拦/放，普通后端跳过
+        return
+    for hk in HardHotkeys {
+        if (!Paused && SelectHotkeyConfig(hk.name) != "")
+            Backend.EnsureSubscribed(hk.sc, hk.callback)
+        else
+            Backend.EnsureUnsubscribed(hk.sc)
     }
 }
 
@@ -636,6 +673,7 @@ BaseKey(hk) => RegExReplace(hk, "^[\^!+#<>*~$ ]+", "")
 TogglePause(*) {
     global Paused, AppName
     Paused := !Paused
+    ReconcileHardHotkeys()      ; 暂停立刻放开硬热键、恢复立刻重新拦，不等下一拍
     TrayTip(Paused ? "已暂停" : "已恢复", AppName)
 }
 
@@ -984,6 +1022,11 @@ OnExitHandler(*) {
     try {
         if Backend
             Backend.ReleaseAll()
+    }
+    ; 硬模式兜底：退出前放开所有还拦着的键，别让哪个键卡死。
+    try {
+        if HasMethod(Backend, "UnsubscribeAll")
+            Backend.UnsubscribeAll()
     }
     return 0   ; 允许退出
 }

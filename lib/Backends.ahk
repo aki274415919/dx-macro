@@ -140,7 +140,8 @@ InterceptionDriverPresent() {
 class InterceptionBackend extends IInputBackend {
     __New(settings) {
         super.__New()
-        this.hotkeyScs := Map()
+        this.hotkeyScs := Map()      ; sc -> 键名，注册时占位查冲突
+        this.subscribed := Map()     ; sc -> true，当前正在驱动层拦截的键（会随窗口动态增删）
 
         ; 顺序是有意的：先查文件，再查驱动，最后才构造 AHI。
         EnsureInterceptionFiles()
@@ -183,20 +184,38 @@ class InterceptionBackend extends IInputBackend {
         return 0
     }
 
-    SubscribeHotkey(key, callback) {
+    ; 注册时占位并查扫描码冲突，返回 sc。不订阅——订阅由对账逻辑按窗口动态做。
+    ReserveHotkey(key) {
         sc := GetKeySC(key)
         if !sc
             throw Error("无法取得扫描码: " key)
         if this.hotkeyScs.Has(sc)
             throw Error("与 " this.hotkeyScs[sc] " 使用同一扫描码")
         this.hotkeyScs[sc] := key
-        try {
-            ; block=true 与普通 AHK 热键一致：触发键本身不继续传给目标程序。
-            this.AHI.SubscribeKey(this.id, sc, true, callback)
-        } catch as e {
-            this.hotkeyScs.Delete(sc)
-            throw e
-        }
+        return sc
+    }
+
+    ; 幂等：目标窗口激活时叫它开始拦这个键（block=true，触发键不再传给目标程序）。
+    EnsureSubscribed(sc, callback) {
+        if this.subscribed.Has(sc)
+            return
+        this.AHI.SubscribeKey(this.id, sc, true, callback)
+        this.subscribed[sc] := true
+    }
+
+    ; 幂等：目标窗口不在了就放开这个键，别的进程照常使用它。
+    EnsureUnsubscribed(sc) {
+        if !this.subscribed.Has(sc)
+            return
+        this.AHI.UnsubscribeKey(this.id, sc)
+        this.subscribed.Delete(sc)
+    }
+
+    ; 退出兜底：放开所有还拦着的键，别让哪个键卡死。
+    UnsubscribeAll() {
+        for sc in this.subscribed.Clone()
+            try this.AHI.UnsubscribeKey(this.id, sc)
+        this.subscribed.Clear()
     }
 
     ; GetKeySC() 是 AHK 内建函数，把键名转成扫描码。

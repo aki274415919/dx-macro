@@ -47,7 +47,8 @@ LoadConfigFile(path) {
 LoadScriptConfig(path) {
     settings := Map("backend", "sendinput", "pause_key", "F8", "exit_key", "^!x"
         , "ask_admin", true, "require_admin", false
-        , "interception_vid", 0, "interception_pid", 0, "interception_instance", 1)
+        , "interception_vid", 0, "interception_pid", 0, "interception_instance", 1
+        , "poll_ms", 200)
     hotkeys := Map()
     blocks := Map()
     activeWindow := ""
@@ -177,6 +178,8 @@ ParseScriptDirective(line, settings, &activeWindow, &repeat) {
                 settings["interception_pid"] := ParseIniInt(value, "#InterceptionPid")
             case "interceptioninstance":
                 settings["interception_instance"] := ParseIniInt(value, "#InterceptionInstance")
+            case "pollms", "pollinterval":
+                settings["poll_ms"] := ParseIniInt(value, "#PollMs")
             case "repeat":
                 repeat := ParseIniBool(value, "#Repeat")
             default:
@@ -308,7 +311,8 @@ LoadIniConfig(path) {
 
     settings := Map("backend", "sendinput", "pause_key", "F8", "exit_key", "^!x"
         , "ask_admin", true, "require_admin", false
-        , "interception_vid", 0, "interception_pid", 0, "interception_instance", 1)
+        , "interception_vid", 0, "interception_pid", 0, "interception_instance", 1
+        , "poll_ms", 200)
     if sections.Has("settings") {
         for pair in sections["settings"] {
             key := StrLower(pair[1]), val := pair[2]
@@ -317,7 +321,7 @@ LoadIniConfig(path) {
                     settings[key] := val
                 case "ask_admin", "require_admin":
                     settings[key] := ParseIniBool(val, key)
-                case "interception_vid", "interception_pid", "interception_instance":
+                case "interception_vid", "interception_pid", "interception_instance", "poll_ms":
                     settings[key] := ParseIniInt(val, key)
             }
         }
@@ -424,7 +428,8 @@ DefaultConfig() {
             ; 只有 backend=interception 时才用到，程序会引导自动检测：
             "interception_vid", 0x0000,
             "interception_pid", 0x0000,
-            "interception_instance", 1
+            "interception_instance", 1,
+            "poll_ms", 200              ; 硬模式对账轮询间隔(ms)，越小切窗口越快越费CPU
         ),
 
         "hotkeys", Map(
