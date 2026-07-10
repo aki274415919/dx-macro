@@ -410,3 +410,11 @@ Return
 - `Tap`
 - `Call`
 - `Return`
+
+## 14. 许可证
+
+- dx-macro 自身代码：**GPL-3.0**（见 [`LICENSE`](LICENSE)）。
+- **个人 / 非商业免费用。** 只有一处收费点：用硬输入（Interception 驱动）**商用**时，
+  需向 Interception 作者购买商业授权；不用硬输入则完全无此限制。
+- 用到的第三方：AutoHotkey（GPL v2）、AutoHotInterception（MIT）、Interception
+  （LGPL-3.0 非商业 / 商业授权）。详见 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md)。
