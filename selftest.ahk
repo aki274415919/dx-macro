@@ -242,6 +242,29 @@ RunSelfTest() {
     recHook := InputHook("V L0")
     Assert(recHook.VisibleText && recHook.VisibleNonText, "录制器按键透传")
 
+    ; 一个入口脚本可包含多个子脚本；相对路径和循环检测都在加载阶段完成。
+    includeDir := A_Temp "\dx-macro-include-" DllCall("GetCurrentProcessId")
+    DirCreate(includeDir)
+    rootScript := includeDir "\root.dxm"
+    childScript := includeDir "\child macro.dxm"
+    cycleA := includeDir "\cycle-a.dxm"
+    cycleB := includeDir "\cycle-b.dxm"
+    try {
+        WriteTextFile(childScript, "#HotIf true`nF10::`n    Tap a`nReturn`n")
+        WriteTextFile(rootScript, "#Include `"child macro.dxm`"`n#HotIf true`nF11::`n    Tap b`nReturn`n")
+        included := LoadScriptConfig(rootScript)
+        Assert(included["hotkeys"].Has("F10") && included["hotkeys"].Has("F11")
+            && !Throws(() => ValidateConfig(included)), "#Include 同时加载多个脚本")
+
+        WriteTextFile(cycleA, "#Include `"cycle-b.dxm`"`n")
+        WriteTextFile(cycleB, "#Include `"cycle-a.dxm`"`n")
+        Assert(Throws(() => LoadScriptConfig(cycleA)), "循环 #Include 被拒")
+    } finally {
+        for path in [rootScript, childScript, cycleA, cycleB]
+            try FileDelete(path)
+        try DirDelete(includeDir)
+    }
+
     Say("`nALL PASS")
     ExitApp(0)
 }

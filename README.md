@@ -95,8 +95,21 @@ F2::
 Return
 ```
 
-一个运行中的 `dx-macro` 只加载一个 `.dxm`。需要很多宏时，把它们都写在同一个脚本里；
-再启动另一个 `.dxm` 会替换当前实例，不会同时占两套全局控制键。
+一个运行中的 `dx-macro` 可以加载多个脚本文件。建一个主脚本，用 `#Include` 拆分：
+
+```ahk
+#Requires dx-macro
+#AskAdmin on
+#DxHardInput on
+#PauseKey F8
+
+#Include "macros\move.dxm"
+#Include "macros\combat.dxm"
+```
+
+相对路径从写下 `#Include` 的脚本目录开始计算。所有子脚本同时生效，共用一个 `F8` 和输入后端；
+循环包含、以及跨文件的“同一热键 + 同一 App”冲突都会在启动时被拒绝。
+全局设置建议只写在主脚本里，子脚本只写 `#HotIf`、热键和动作。
 
 同一个键也可以在不同 App 里做不同动作：
 
@@ -312,7 +325,7 @@ Return
 卸载是 `install-interception.exe /uninstall`，同样要重启。
 
 第一次运行时如果脚本还没有键盘配置，程序会弹出检测窗口。直接在要使用的键盘上按任意键，
-程序会把设备配置写回当前 `.dxm`，随后继续用硬输入启动。按 `Esc` 或点取消则本次回退到普通输入。
+程序会把设备配置写回当前 `.dxm`，自动重启后用硬输入运行。按 `Esc` 或点取消则本次回退到普通输入。
 这个检测过程已经包含在 `dx-macro.exe` 里，不需要安装 AutoHotkey，也不需要另跑 `Monitor.ahk`。
 
 先用 `#DxHardInput off` 把脚本测通，再考虑硬输入。
@@ -357,6 +370,7 @@ Return
 - `#RequireAdmin`
 - `#DxHardInput on/off`
 - `#InterceptionVid`、`#InterceptionPid`、`#InterceptionInstance`（由程序自动写入）
+- `#Include "相对或绝对路径.dxm"`
 - `#PauseKey`
 - `#ExitKey`
 - `#HotIf true`

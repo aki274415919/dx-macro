@@ -56,7 +56,7 @@ LoadScriptConfig(path) {
     currentCfg := ""
     currentActions := ""
 
-    for raw in StrSplit(FileRead(path, "UTF-8"), "`n", "`r") {
+    for raw in StrSplit(ReadScriptText(path), "`n", "`r") {
         line := Trim(raw)
         if (line = "" || SubStr(line, 1, 1) = ";")
             continue
@@ -95,6 +95,46 @@ LoadScriptConfig(path) {
     }
 
     return Map("settings", settings, "hotkeys", hotkeys, "blocks", blocks)
+}
+
+
+ReadScriptText(path, stack := "") {
+    if !IsObject(stack)
+        stack := Map()
+    fullPath := ResolveScriptPath(path)
+    key := StrLower(fullPath)
+    if stack.Has(key) {
+        SplitPath(fullPath, &name)
+        throw Error("循环 #Include: " name)
+    }
+
+    stack[key] := true
+    SplitPath(fullPath, , &dir)
+    text := ""
+    for raw in StrSplit(FileRead(fullPath, "UTF-8"), "`n", "`r") {
+        line := Trim(raw)
+        if RegExMatch(line, "i)^#Include\s+(.+)$", &m) {
+            includePath := Unquote(Trim(m[1]))
+            if (includePath = "")
+                throw Error("#Include 缺少文件名")
+            if !RegExMatch(includePath, "i)^(?:[a-z]:\\|\\\\)")
+                includePath := dir "\" includePath
+            text .= ReadScriptText(includePath, stack)
+        } else {
+            text .= raw "`n"
+        }
+    }
+    stack.Delete(key)
+    return text
+}
+
+
+ResolveScriptPath(path) {
+    if !FileExist(path)
+        throw Error("找不到脚本文件: " path)
+    Loop Files path, "F"
+        return A_LoopFileFullPath
+    throw Error("不是脚本文件: " path)
 }
 
 

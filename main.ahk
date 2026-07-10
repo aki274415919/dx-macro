@@ -65,10 +65,9 @@ Main() {
     } catch KeyboardNotConfiguredError as e {
         try {
             if ConfigureInterceptionScript(LoadedConfigPath) {
-                Config := LoadConfig()
-                ValidateConfig(Config)
-                settings := Config["settings"]
-                Backend := InitBackend(settings)
+                ; 检测器刚释放订阅时不要立刻再建 AHI；重启后只创建正式后端。
+                ReloadScript()
+                return
             } else {
                 MsgBox("没有选择键盘，先用 SendInput 继续运行。", AppName, "Icon!")
                 Backend := SendInputBackend()
@@ -124,7 +123,7 @@ ConfigureInterceptionScript(path) {
     text := SetScriptDirective(text, "InterceptionPid", Format("0x{:04X}", device.pid))
     text := SetScriptDirective(text, "InterceptionInstance", device.instance)
     WriteTextFile(path, text)
-    MsgBox("硬输入键盘已写入当前脚本。", AppName, "Iconi")
+    MsgBox("硬输入键盘已写入当前脚本，程序将重新启动。", AppName, "Iconi")
     return true
 }
 
