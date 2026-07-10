@@ -51,7 +51,25 @@ if (Test-Path $rel) { Remove-Item $rel -Recurse -Force }
 New-Item -ItemType Directory -Force -Path (Join-Path $rel "Interception") | Out-Null
 
 Copy-Item "dx-macro.exe" $rel
-Copy-Item "dx-macro.dxm" (Join-Path $rel "dx-macro.dxm")   # 示例脚本
+# 发布包里放通用示例模板，不带任何人的个人配置（VID/PID、窗口名等）
+$sampleDxm = @"
+#Requires dx-macro
+#AskAdmin on
+#DxHardInput off
+#PauseKey F8
+#ExitKey ^!x
+
+; 只在目标程序窗口里生效。把 target.exe 换成你的程序名（运行后按 Ctrl+Alt+W 查）。
+; 不限窗口就写 #HotIf true
+#HotIf WinActive("target.exe")
+
+Numpad1::
+    Send "{Down}"
+    Sleep 100
+    Send "{Left}"
+Return
+"@
+[System.IO.File]::WriteAllText((Join-Path $rel "sample.dxm"), $sampleDxm, (New-Object System.Text.UTF8Encoding $false))
 Copy-Item $installer (Join-Path $rel "Interception\install-interception.exe")
 
 # 安装/卸载 bat：自动提权（内核驱动必须管理员）
@@ -92,7 +110,7 @@ dx-macro 使用说明
   3. 运行 dx-macro.exe，托盘菜单/脚本里开启硬输入。
 
 配置脚本：
-  编辑 dx-macro.dxm，或运行后按 Ctrl+Alt+E 打开内置编辑器。
+  编辑 sample.dxm（通用模板，照着改），或运行后按 Ctrl+Alt+E 打开内置编辑器。
   按 Ctrl+Alt+K 打开按键识别器，按任意键就知道它的名字和写法。
 
 卸载驱动：
