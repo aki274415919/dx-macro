@@ -328,6 +328,9 @@ Return
 程序会把设备配置写回当前 `.dxm`，自动重启后用硬输入运行。按 `Esc` 或点取消则本次回退到普通输入。
 这个检测过程已经包含在 `dx-macro.exe` 里，不需要安装 AutoHotkey，也不需要另跑 `Monitor.ahk`。
 
+硬输入开启时，像 `Numpad0`、`F1` 这种不带修饰键的宏热键也由 Interception 驱动直接监听，
+不再依赖目标程序是否接受 AHK 热键钩子。`F8` 和带 Ctrl/Alt/Shift 的组合控制键仍由 AHK 监听。
+
 先用 `#DxHardInput off` 把脚本测通，再考虑硬输入。
 
 > 小键盘的坑：硬输入发的是扫描码，`Numpad1` 和 `NumpadEnd` 是同一个扫描码 `0x4F`，

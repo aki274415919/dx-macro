@@ -136,6 +136,7 @@ InterceptionDriverPresent() {
 class InterceptionBackend extends IInputBackend {
     __New(settings) {
         super.__New()
+        this.hotkeyScs := Map()
 
         ; 顺序是有意的：先查文件，再查驱动，最后才构造 AHI。
         EnsureInterceptionFiles()
@@ -176,6 +177,22 @@ class InterceptionBackend extends IInputBackend {
             }
         }
         return 0
+    }
+
+    SubscribeHotkey(key, callback) {
+        sc := GetKeySC(key)
+        if !sc
+            throw Error("无法取得扫描码: " key)
+        if this.hotkeyScs.Has(sc)
+            throw Error("与 " this.hotkeyScs[sc] " 使用同一扫描码")
+        this.hotkeyScs[sc] := key
+        try {
+            ; block=true 与普通 AHK 热键一致：触发键本身不继续传给目标程序。
+            this.AHI.SubscribeKey(this.id, sc, true, callback)
+        } catch as e {
+            this.hotkeyScs.Delete(sc)
+            throw e
+        }
     }
 
     ; GetKeySC() 是 AHK 内建函数，把键名转成扫描码。

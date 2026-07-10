@@ -401,11 +401,29 @@ InitBackend(settings) {
 
 
 RegisterHotkeys() {
-    global Config
+    global Config, Backend
     if !Config.Has("hotkeys")
         return
-    for name, variants in Config["hotkeys"]
+    for name, variants in Config["hotkeys"] {
+        if (Type(Backend) = "InterceptionBackend" && IsSimpleHardHotkey(name))
+            SafeHardHotkey(name)
+        else
+            SafeHotkey(name, RunHotkey.Bind(name))
+    }
+}
+
+
+IsSimpleHardHotkey(name) => (name = BaseKey(name) && GetKeySC(name) != 0)
+
+
+SafeHardHotkey(name) {
+    global Backend, AppName
+    try {
+        Backend.SubscribeHotkey(name, RunHardHotkey.Bind(name))
+    } catch as e {
+        MsgBox("注册驱动热键失败: " name "`n" e.Message "`n`n已改用普通热键监听。", AppName, "Icon!")
         SafeHotkey(name, RunHotkey.Bind(name))
+    }
 }
 
 
@@ -420,6 +438,29 @@ SafeHotkey(keyName, callback) {
 
 
 RunHotkey(name, *) {
+    RunHotkeyCore(name, true)
+}
+
+
+RunHardHotkey(name, state) {
+    static down := Map()
+    if !state {
+        down.Delete(name)
+        return
+    }
+
+    cfg := SelectHotkeyConfig(name)
+    if !cfg
+        return
+    repeat := cfg.Has("repeat") ? cfg["repeat"] : false
+    if (down.Has(name) && !repeat)
+        return
+    down[name] := true
+    RunHotkeyCore(name, false)
+}
+
+
+RunHotkeyCore(name, waitForRelease) {
     global Config, Backend, Paused, AppName
 
     if Paused
@@ -438,7 +479,7 @@ RunHotkey(name, *) {
 
     ; repeat=false 时等热键松开，避免按住连发
     repeat := cfg.Has("repeat") ? cfg["repeat"] : false
-    if !repeat
+    if (!repeat && waitForRelease)
         KeyWait(BaseKey(name))
 }
 

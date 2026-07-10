@@ -223,6 +223,20 @@ RunSelfTest() {
     RunSend("hello")            ; 文本不该碰后端（走 SendInput）
     Assert(Backend.log.Length = 0, "RunSend 文本不经过后端")
 
+    Assert(IsSimpleHardHotkey("Numpad0") && !IsSimpleHardHotkey("^!x"),
+        "驱动热键只接管无修饰普通键")
+    oldConfig := Config
+    Config := Map("hotkeys", Map("F10", [Map("repeat", false, "actions", [Map("tap", "a")])]))
+    Backend := MockBackend()
+    RunHardHotkey("F10", 1)
+    RunHardHotkey("F10", 1) ; 按住产生的重复 down 不应重跑
+    Assert(Backend.log.Length = 2, "驱动热键按住不连发")
+    RunHardHotkey("F10", 0)
+    RunHardHotkey("F10", 1)
+    RunHardHotkey("F10", 0)
+    Assert(Backend.log.Length = 4, "驱动热键松开后可再次触发")
+    Config := oldConfig
+
     ; 内置配置器只改目标指令；安全写入能覆盖文件。
     directives := "#DxHardInput off`n#HotIf true`n"
     directives := SetScriptDirective(directives, "DxHardInput", "on")
