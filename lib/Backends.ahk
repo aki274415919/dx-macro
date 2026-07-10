@@ -92,7 +92,11 @@ CreateAutoHotInterception() {
     oldDir := A_WorkingDir
     try {
         SetWorkingDir(A_ScriptDir) ; AHI 的 FileInstall 目标是相对路径 Lib\
-        return AutoHotInterception()
+        ; 动态引用类名：AHI 是 *i 可选 include，缺席时裸写 AutoHotInterception()
+        ; 会在载入期弹「变量从未赋值」警告，破坏「无 AHI 就用 SendInput」的降级。
+        ; 只有 IsSet(AutoHotInterception) 为真时才会走到这里。
+        cls := %"AutoHotInterception"%
+        return cls()
     } finally {
         SetWorkingDir(oldDir)
     }

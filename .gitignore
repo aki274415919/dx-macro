@@ -2,6 +2,8 @@
 *.zip
 *.bak
 .downloads/
+# build-release.ps1 的产物（含二进制），可随时重新生成
+release/
 # AutoHotInterception（第三方，自己下载解压到 lib\ 和根目录，见 README）
 lib/AutoHotInterception.ahk
 lib/AutoHotInterception.dll

@@ -96,14 +96,14 @@ Main() {
 
     ; 查前台窗口进程名，顺便复制到剪贴板，方便填 active_window
     SafeHotkey("^!w", ShowActiveProcess)
-    SafeHotkey("^!k", ShowKeySnippet)
+    SafeHotkey("^!k", ShowKeyInspector)
     SafeHotkey("^!e", ShowCurrentScriptEditor)
     SafeHotkey("^!r", RecordSnippet)
 
     SetupTray(pauseKey)
     OnExit(OnExitHandler)
 
-    TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查进程: Ctrl+Alt+W`n查键名: Ctrl+Alt+K`n编辑: Ctrl+Alt+E`n录制: Ctrl+Alt+R`n重载: 托盘菜单",
+    TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查进程: Ctrl+Alt+W`n识别按键: Ctrl+Alt+K`n编辑: Ctrl+Alt+E`n录制: Ctrl+Alt+R`n重载: 托盘菜单",
         Type(Backend), pauseKey, exitKey), AppName " 已启动")
 }
 
@@ -341,7 +341,7 @@ ValidateConfig(config) {
 
 
 ReservedHotkeys(settings) {
-    out := Map("^!w", "查窗口", "^!k", "查键名", "^!e", "编辑器", "^!r", "录制")
+    out := Map("^!w", "查窗口", "^!k", "识别按键", "^!e", "编辑器", "^!r", "录制")
     pauseKey := settings.Has("pause_key") ? settings["pause_key"] : "F8"
     exitKey := settings.Has("exit_key") ? settings["exit_key"] : "^!x"
     if (pauseKey != "")
@@ -571,27 +571,78 @@ ShowActiveProcess(*) {
 }
 
 
-ShowKeySnippet(*) {
-    global AppName
-    TrayTip("按一个要写进脚本的键，10 秒内有效。", AppName)
-    ih := InputHook("L1 T10")
-    ih.KeyOpt("{All}", "E")
-    ih.Start()
-    ih.Wait()
-
-    key := ih.EndKey != "" ? ih.EndKey : ih.Input
-    if (key = "")
-        return
+; 常驻按键识别器：按键实时更新，不超时、不用反复按热键。
+; 显示键名、扫描码、可直接粘进 .dxm 的写法；小键盘键提示 NumLock 影响。
+ShowKeyInspector(*) {
+    global AppName, KeyInspectorOpen
+    if (IsSet(KeyInspectorOpen) && KeyInspectorOpen)
+        return                          ; 已经开着，别开第二个
+    KeyInspectorOpen := true
 
     q := Chr(34)
-    snippet := "Send " q "{" key "}" q
-    text := "键名: " key
-        . "`n`n点按:`n" snippet
-        . "`n`n按下:`nSend " q "{" key " down}" q
-        . "`n`n松开:`nSend " q "{" key " up}" q
-        . "`n`nTap:`nTap " key " 50"
-    A_Clipboard := snippet
-    MsgBox(text "`n`n已复制点按写法。", AppName)
+    lastSnippet := ""
+    pressed := Map()                    ; 忽略系统自动重复
+
+    g := Gui("+AlwaysOnTop", AppName " 按键识别器")
+    g.SetFont("s10", "Segoe UI")
+    g.AddText("xm w380", "按任意键，这里实时显示它是什么、以及写进脚本的方式。")
+    g.SetFont("s16 Bold", "Consolas")
+    nameCtrl := g.AddText("xm w380 h34", "（等待按键…）")
+    g.SetFont("s10", "Consolas")
+    codeCtrl := g.AddEdit("xm w380 h150 ReadOnly -Wrap")
+    g.SetFont("s9", "Segoe UI")
+    g.AddButton("xm w150", "复制 Send 写法").OnEvent("Click", CopyNow)
+    g.AddButton("x+8 w80", "关闭").OnEvent("Click", (*) => Done())
+
+    ih := InputHook()
+    ih.KeyOpt("{All}", "N")             ; 通知但不拦截，按键照常生效
+    ih.OnKeyDown := OnDown
+    ih.OnKeyUp := OnUp
+    ih.Start()
+
+    g.OnEvent("Close", (*) => Done())
+    g.Show()
+    return
+
+    OnDown(h, vk, sc) {
+        name := GetKeyName(Format("vk{:x}sc{:x}", vk, sc))
+        if (name = "" || pressed.Has(name))
+            return
+        pressed[name] := true
+
+        lastSnippet := "Send " q "{" name "}" q
+        detail := "扫描码: 0x" Format("{:03X}", sc) (sc & 0x100 ? "  (扩展键)" : "")
+            . "`r`n`r`n点按:  " lastSnippet
+            . "`r`n按下:  Send " q "{" name " down}" q
+            . "`r`n松开:  Send " q "{" name " up}" q
+            . "`r`nTap:   Tap " name " 50"
+        if (SubStr(name, 1, 6) = "Numpad")
+            detail .= "`r`n`r`n⚠ 小键盘键：硬输入下 Numpad1 和 NumpadEnd 同扫描码，"
+                . "`r`n   实际字符取决于 NumLock；普通输入无此问题。"
+        nameCtrl.Text := name
+        codeCtrl.Value := detail
+    }
+
+    OnUp(h, vk, sc) {
+        name := GetKeyName(Format("vk{:x}sc{:x}", vk, sc))
+        if (name != "")
+            pressed.Delete(name)
+    }
+
+    CopyNow(*) {
+        if (lastSnippet = "")
+            return
+        A_Clipboard := lastSnippet
+        ToolTip("已复制: " lastSnippet)
+        SetTimer(() => ToolTip(), -1200)
+    }
+
+    Done() {
+        global KeyInspectorOpen
+        KeyInspectorOpen := false
+        try ih.Stop()
+        g.Destroy()
+    }
 }
 
 

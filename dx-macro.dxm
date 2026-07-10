@@ -1,11 +1,14 @@
-﻿#Requires dx-macro
+﻿#InterceptionInstance 1
+#InterceptionPid 0x2113
+#InterceptionVid 0x413C
+#Requires dx-macro
 #AskAdmin on
 #DxHardInput on
 #PauseKey F8
 #ExitKey ^!x
 ; #RequireAdmin
 
-#HotIf WinActive("target.exe")
+#HotIf WinActive("psobbw.exe")
 
 Numpad0::
     Send "{Left}"
