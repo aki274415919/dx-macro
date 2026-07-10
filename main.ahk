@@ -28,7 +28,7 @@ else
 
 
 Main() {
-    global Config, Backend, AppName
+    global Config, Backend, AppName, LoadedConfigPath
 
     if HandleUtilityCommand()
         return
@@ -62,6 +62,21 @@ Main() {
 
     try {
         Backend := InitBackend(settings)
+    } catch KeyboardNotConfiguredError as e {
+        try {
+            if ConfigureInterceptionScript(LoadedConfigPath) {
+                Config := LoadConfig()
+                ValidateConfig(Config)
+                settings := Config["settings"]
+                Backend := InitBackend(settings)
+            } else {
+                MsgBox("没有选择键盘，先用 SendInput 继续运行。", AppName, "Icon!")
+                Backend := SendInputBackend()
+            }
+        } catch as setupError {
+            MsgBox("硬输入键盘配置失败：`n`n" setupError.Message "`n`n先用 SendInput 继续运行。", AppName, "Icon!")
+            Backend := SendInputBackend()
+        }
     } catch DriverMissingError as e {
         OfferInterceptionDownload()
         Backend := SendInputBackend()
@@ -91,6 +106,107 @@ Main() {
 
     TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查进程: Ctrl+Alt+W`n查键名: Ctrl+Alt+K`n编辑: Ctrl+Alt+E`n录制: Ctrl+Alt+R`n重载: 托盘菜单",
         Type(Backend), pauseKey, exitKey), AppName " 已启动")
+}
+
+
+ConfigureInterceptionScript(path) {
+    global AppName
+    if RegExMatch(path, "i)\.ini$")
+        throw Error("自动检测只支持 .dxm 脚本")
+
+    device := CaptureInterceptionKeyboard()
+    if !device
+        return false
+
+    text := FileRead(path, "UTF-8")
+    text := SetScriptDirective(text, "DxHardInput", "on")
+    text := SetScriptDirective(text, "InterceptionVid", Format("0x{:04X}", device.vid))
+    text := SetScriptDirective(text, "InterceptionPid", Format("0x{:04X}", device.pid))
+    text := SetScriptDirective(text, "InterceptionInstance", device.instance)
+    WriteTextFile(path, text)
+    MsgBox("硬输入键盘已写入当前脚本。", AppName, "Iconi")
+    return true
+}
+
+
+CaptureInterceptionKeyboard() {
+    global AppName
+    ahi := CreateAutoHotInterception()
+    keyboards := Map()
+    for id, dev in ahi.GetDeviceList() {
+        if !dev.IsMouse
+            keyboards[id] := dev
+    }
+    if (keyboards.Count = 0)
+        throw Error("Interception 没有检测到键盘")
+
+    picked := {id: 0}
+    g := Gui("+AlwaysOnTop +ToolWindow", AppName)
+    g.SetFont("s10", "Segoe UI")
+    g.AddText("w420", "请在要用于硬输入的键盘上按任意键。`n按 Esc 或点取消可继续使用普通输入。")
+    g.AddButton("w100", "取消").OnEvent("Click", (*) => g.Destroy())
+
+    OnKey(id, code, state) {
+        if (!state || picked.id || code = GetKeySC("Escape"))
+            return
+        picked.id := id
+        g.Destroy()
+    }
+
+    g.OnEvent("Close", (*) => g.Destroy())
+    g.OnEvent("Escape", (*) => g.Destroy())
+    subscribed := []
+    hwnd := g.Hwnd
+    try {
+        for id in keyboards {
+            ahi.SubscribeKeyboard(id, false, OnKey.Bind(id))
+            subscribed.Push(id)
+        }
+        g.Show("AutoSize Center")
+        WinWaitClose("ahk_id " hwnd)
+    } finally {
+        for id in subscribed
+            try ahi.UnsubscribeKeyboard(id)
+    }
+
+    if !picked.id
+        return ""
+
+    selected := keyboards[picked.id]
+    if (!selected.VID || !selected.PID)
+        throw Error("这块键盘没有可用的 VID/PID，暂时不能作为硬输入设备")
+
+    instance := 0
+    for id, dev in keyboards {
+        if (dev.VID = selected.VID && dev.PID = selected.PID) {
+            instance += 1
+            if (id = picked.id)
+                break
+        }
+    }
+    return {vid: selected.VID, pid: selected.PID, instance: instance}
+}
+
+
+SetScriptDirective(text, name, value) {
+    line := "#" name (value = "" ? "" : " " value)
+    pattern := "im)^[ `t]*#" name "\b[^`r`n]*"
+    if RegExMatch(text, pattern)
+        return RegExReplace(text, pattern, line, , 1)
+    newline := InStr(text, "`r`n") ? "`r`n" : "`n"
+    return line newline text
+}
+
+
+WriteTextFile(path, text) {
+    tmp := path ".tmp-" DllCall("GetCurrentProcessId") "-" A_TickCount
+    try {
+        FileAppend(text, tmp, "UTF-8")
+        FileMove(tmp, path, 1)
+    } catch as e {
+        try FileDelete(tmp)
+        throw e
+    }
 }
 
 
@@ -244,6 +360,9 @@ ValidateAction(hk, idx, action, blocks := "") {
         if action.Has(verb) {
             if !IsRealKey(action[verb])
                 throw Error(where "：键名无效 `"" action[verb] "`"")
+            if (verb = "tap" && action.Has("hold")
+                && (!IsInteger(action["hold"]) || action["hold"] < 0))
+                throw Error(where "：Tap hold 必须是非负整数")
             return
         }
     }
@@ -252,8 +371,16 @@ ValidateAction(hk, idx, action, blocks := "") {
             throw Error(where "：sleep 必须是非负整数")
         return
     }
-    if action.Has("send")
+    if action.Has("send") {
+        groups := ParseSendGroups(action["send"])
+        if IsObject(groups) {
+            for group in groups {
+                if !IsRealKey(group.key)
+                    throw Error(where "：键名无效 `"" group.key "`"")
+            }
+        }
         return
+    }
     if action.Has("call") {
         if (blocks = "" || !blocks.Has(action["call"]))
             throw Error(where "：找不到 Block `"" action["call"] "`"")
@@ -455,8 +582,9 @@ RecordSnippet(*) {
     }
 
     TrayTip("开始录制。正常操作，按 Esc 停止，结果复制到剪贴板。", AppName)
-    ih := InputHook()
-    ih.KeyOpt("{All}", "N")     ; N=通知但不拦截，正常操作能看到效果
+    ih := InputHook("V L0")      ; V=透传按键，L0=不收集文本、无长度上限
+    ih.KeyOpt("{All}", "N")
+    ih.KeyOpt("{Escape}", "NS") ; Esc 只停止录制，不传给目标程序
     ih.OnKeyDown := OnDown
     ih.OnKeyUp := OnUp
     ih.Start()
@@ -597,9 +725,7 @@ SaveEditor(path, edit, runAfter, st := "") {
         return
     }
     try {
-        if FileExist(path)
-            FileDelete(path)
-        FileAppend(edit.Value, path, "UTF-8")
+        WriteTextFile(path, edit.Value)
     } catch as e {
         MsgBox("保存失败：`n`n" e.Message, AppName, "Icon!")
         return

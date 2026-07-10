@@ -123,6 +123,8 @@ RunSelfTest() {
     Assert(Throws(() => ValidateConfig(BadConfig(Map("key_down", "Downn")))), "键名拼错被拒")
     Assert(Throws(() => ValidateConfig(BadConfig(Map("sleep", -5)))),         "负数 sleep 被拒")
     Assert(Throws(() => ValidateConfig(BadConfig(Map("bogus", 1)))),          "未知 action 被拒")
+    Assert(Throws(() => ValidateConfig(BadConfig(Map("tap", "Left", "hold", -1)))), "负数 Tap hold 被拒")
+    Assert(Throws(() => ValidateConfig(BadConfig(Map("send", "{Left}{Downn}")))), "多组 Send 的错误键名被拒")
     Assert(!Throws(() => ValidateConfig(BadConfig(Map("tap", "Left")))),      "合法 tap 通过")
 
     multiApp := Map("hotkeys", Map("F9", [
@@ -162,6 +164,8 @@ RunSelfTest() {
     Assert(settings["require_admin"] = true, "#RequireAdmin -> require_admin")
     ParseScriptDirective("#AskAdmin off", settings, &activeWindow, &repeat)
     Assert(settings["ask_admin"] = false, "#AskAdmin off -> ask_admin=false")
+    ParseScriptDirective("#InterceptionInstance 2", settings, &activeWindow, &repeat)
+    Assert(settings["interception_instance"] = 2, "#InterceptionInstance -> 2")
 
     ; Interception 后端必须「抛异常」而不是让 AHI 把进程 ExitApp 掉。
     ; 这个断言本身就是证据：如果 InterceptionBackend 又去先构造 AHI，
@@ -172,11 +176,13 @@ RunSelfTest() {
     try InterceptionBackend(Map("interception_vid", 0, "interception_pid", 0))
     catch DriverMissingError
         caught := "DriverMissingError"
+    catch KeyboardNotConfiguredError
+        caught := "KeyboardNotConfiguredError"
     catch as e
         caught := Type(e)
 
     if InterceptionDriverPresent() {
-        Assert(caught = "Error", "驱动已装但缺 VID/PID -> Error (得到: " caught ")")
+        Assert(caught = "KeyboardNotConfiguredError", "驱动已装但缺设备 -> KeyboardNotConfiguredError (得到: " caught ")")
     } else {
         Assert(caught = "DriverMissingError", "驱动没装 -> DriverMissingError (得到: " caught ")")
     }
@@ -184,6 +190,7 @@ RunSelfTest() {
     ; Send 拆组：纯 {Key} 序列走后端，含文本落回 SendInput
     Assert(ParseSendGroups("hello") = "", "纯文本 -> 不拆组（走 SendInput）")
     Assert(ParseSendGroups("{Left}abc") = "", "键+文本混合 -> 不拆组")
+    Assert(ParseSendGroups("{}") = "", "空按键组不会崩溃")
     g := ParseSendGroups("{Left}{Right down}{Right up}")
     Assert(IsObject(g) && g.Length = 3, "三个组")
     Assert(g[1].key = "Left"  && g[1].state = "tap",  "组1 = Left tap")
@@ -215,6 +222,25 @@ RunSelfTest() {
     Backend := MockBackend()
     RunSend("hello")            ; 文本不该碰后端（走 SendInput）
     Assert(Backend.log.Length = 0, "RunSend 文本不经过后端")
+
+    ; 内置配置器只改目标指令；安全写入能覆盖文件。
+    directives := "#DxHardInput off`n#HotIf true`n"
+    directives := SetScriptDirective(directives, "DxHardInput", "on")
+    directives := SetScriptDirective(directives, "InterceptionInstance", 2)
+    Assert(InStr(directives, "#DxHardInput on") && InStr(directives, "#InterceptionInstance 2"),
+        "硬输入指令可写入脚本")
+
+    tmp := A_Temp "\dx-macro-write-" DllCall("GetCurrentProcessId") ".txt"
+    try {
+        WriteTextFile(tmp, "first")
+        WriteTextFile(tmp, "second")
+        Assert(FileRead(tmp, "UTF-8") = "second", "安全写入可替换已有文件")
+    } finally {
+        try FileDelete(tmp)
+    }
+
+    recHook := InputHook("V L0")
+    Assert(recHook.VisibleText && recHook.VisibleNonText, "录制器按键透传")
 
     Say("`nALL PASS")
     ExitApp(0)

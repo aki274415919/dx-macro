@@ -95,6 +95,9 @@ F2::
 Return
 ```
 
+一个运行中的 `dx-macro` 只加载一个 `.dxm`。需要很多宏时，把它们都写在同一个脚本里；
+再启动另一个 `.dxm` 会替换当前实例，不会同时占两套全局控制键。
+
 同一个键也可以在不同 App 里做不同动作：
 
 ```ahk
@@ -191,9 +194,9 @@ dx-macro.exe --edit "D:\macros\game.dxm"
 Ctrl+Alt+R
 ```
 
-然后按一串键，按 `Esc` 结束。工具会把录制结果复制到剪贴板。
+然后正常操作一串键，按 `Esc` 结束。录制期间按键仍会传给当前程序，结果会复制到剪贴板。
 
-录制器是基础版：记录点按和间隔，不记录复杂鼠标操作，也不保证适合所有游戏/软件。
+录制器会记录点按、按住时长、按下/松开和间隔；不记录鼠标操作。
 
 ## 8. 长宏怎么维护
 
@@ -298,6 +301,7 @@ Return
 #DxHardInput on
 #InterceptionVid 0x0000
 #InterceptionPid 0x0000
+#InterceptionInstance 1
 ```
 
 硬输入需要额外安装 Interception 驱动。**没装也不会出问题**：启动时会弹一个框告诉你，
@@ -307,8 +311,9 @@ Return
 解压后以管理员运行 `install-interception.exe /install`，**装完必须重启**。
 卸载是 `install-interception.exe /uninstall`，同样要重启。
 
-VID/PID 不要猜：跑一下项目根目录的 `Monitor.ahk`，在你要用的那块键盘上按个键，
-看哪一行有反应，把它的 VID/PID 填进去。
+第一次运行时如果脚本还没有键盘配置，程序会弹出检测窗口。直接在要使用的键盘上按任意键，
+程序会把设备配置写回当前 `.dxm`，随后继续用硬输入启动。按 `Esc` 或点取消则本次回退到普通输入。
+这个检测过程已经包含在 `dx-macro.exe` 里，不需要安装 AutoHotkey，也不需要另跑 `Monitor.ahk`。
 
 先用 `#DxHardInput off` 把脚本测通，再考虑硬输入。
 
@@ -351,6 +356,7 @@ Return
 - `#AskAdmin on/off`
 - `#RequireAdmin`
 - `#DxHardInput on/off`
+- `#InterceptionVid`、`#InterceptionPid`、`#InterceptionInstance`（由程序自动写入）
 - `#PauseKey`
 - `#ExitKey`
 - `#HotIf true`

@@ -34,7 +34,8 @@ ConfigPath() {
         return path
     }
     script := A_ScriptDir "\dx-macro.dxm"
-    return FileExist(script) ? script : A_ScriptDir "\dx-macro.ini"
+    ini := A_ScriptDir "\dx-macro.ini"
+    return (FileExist(script) || !FileExist(ini)) ? script : ini
 }
 
 
@@ -46,7 +47,7 @@ LoadConfigFile(path) {
 LoadScriptConfig(path) {
     settings := Map("backend", "sendinput", "pause_key", "F8", "exit_key", "^!x"
         , "ask_admin", true, "require_admin", false
-        , "interception_vid", 0, "interception_pid", 0)
+        , "interception_vid", 0, "interception_pid", 0, "interception_instance", 1)
     hotkeys := Map()
     blocks := Map()
     activeWindow := ""
@@ -134,6 +135,8 @@ ParseScriptDirective(line, settings, &activeWindow, &repeat) {
                 settings["interception_vid"] := ParseIniInt(value, "#InterceptionVid")
             case "interceptionpid":
                 settings["interception_pid"] := ParseIniInt(value, "#InterceptionPid")
+            case "interceptioninstance":
+                settings["interception_instance"] := ParseIniInt(value, "#InterceptionInstance")
             case "repeat":
                 repeat := ParseIniBool(value, "#Repeat")
             default:
@@ -220,6 +223,8 @@ ParseSendGroups(value) {
         if !RegExMatch(value, "\G\{([^{}]+)\}", &m, pos)
             return ""                       ; 有不在花括号里的内容 -> 文本
         parts := Words(m[1])
+        if (parts.Length = 0)
+            return ""
         key := parts[1]
         if (parts.Length = 1)
             groups.Push({key: key, state: "tap"})
@@ -263,7 +268,7 @@ LoadIniConfig(path) {
 
     settings := Map("backend", "sendinput", "pause_key", "F8", "exit_key", "^!x"
         , "ask_admin", true, "require_admin", false
-        , "interception_vid", 0, "interception_pid", 0)
+        , "interception_vid", 0, "interception_pid", 0, "interception_instance", 1)
     if sections.Has("settings") {
         for pair in sections["settings"] {
             key := StrLower(pair[1]), val := pair[2]
@@ -272,7 +277,7 @@ LoadIniConfig(path) {
                     settings[key] := val
                 case "ask_admin", "require_admin":
                     settings[key] := ParseIniBool(val, key)
-                case "interception_vid", "interception_pid":
+                case "interception_vid", "interception_pid", "interception_instance":
                     settings[key] := ParseIniInt(val, key)
             }
         }
@@ -376,9 +381,10 @@ DefaultConfig() {
             "exit_key",  "^!x",         ; 退出 (Ctrl+Alt+X)
             "ask_admin", true,
             "require_admin", false,
-            ; 只有 backend=interception 时才用到，用 AHI 的 Monitor 工具查：
+            ; 只有 backend=interception 时才用到，程序会引导自动检测：
             "interception_vid", 0x0000,
-            "interception_pid", 0x0000
+            "interception_pid", 0x0000,
+            "interception_instance", 1
         ),
 
         "hotkeys", Map(

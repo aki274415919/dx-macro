@@ -65,9 +65,38 @@ class DriverMissingError extends Error {
 }
 
 
+class KeyboardNotConfiguredError extends Error {
+}
+
+
 ; 脚本版 A_ScriptDir 是项目根，编译版是 exe 所在目录 —— AHI 两边都用 Lib\，
 ; 所以这一个表达式两边都对。（Windows 路径不区分大小写，lib\ 就是 Lib\）
 InterceptionDir() => A_ScriptDir "\Lib"
+
+
+; AHI 自己也有 FileInstall，但它发生在构造函数里；我们必须先释放资源，
+; 才能在不触发 AHI 的 MsgBox + ExitApp 前提下完成文件和驱动预检。
+EnsureInterceptionFiles() {
+    if !A_IsCompiled
+        return
+    dir := InterceptionDir()
+    DirCreate(dir "\x64")
+    DirCreate(dir "\x86")
+    FileInstall("Lib\AutoHotInterception.dll", dir "\AutoHotInterception.dll", 1)
+    FileInstall("Lib\x64\interception.dll", dir "\x64\interception.dll", 1)
+    FileInstall("Lib\x86\interception.dll", dir "\x86\interception.dll", 1)
+}
+
+
+CreateAutoHotInterception() {
+    oldDir := A_WorkingDir
+    try {
+        SetWorkingDir(A_ScriptDir) ; AHI 的 FileInstall 目标是相对路径 Lib\
+        return AutoHotInterception()
+    } finally {
+        SetWorkingDir(oldDir)
+    }
+}
 
 
 InterceptionDllPath() {
@@ -100,7 +129,7 @@ InterceptionDriverPresent() {
 ; ------------------------------------------------------------
 ;  B. Interception 后端 —— 驱动层键盘输入
 ;  需要: 1) 安装 Interception 驱动（装完要重启）
-;        2) lib\AutoHotInterception\ 放好 AHI
+;        2) lib\ 下放好 AHI（编译版会从 exe 自动释放）
 ;        3) 脚本里写 #InterceptionVid / #InterceptionPid
 ;  说明见 README「Interception 后端」一节。
 ; ------------------------------------------------------------
@@ -109,6 +138,7 @@ class InterceptionBackend extends IInputBackend {
         super.__New()
 
         ; 顺序是有意的：先查文件，再查驱动，最后才构造 AHI。
+        EnsureInterceptionFiles()
         if !IsSet(AutoHotInterception)
             throw Error("找不到 AutoHotInterception.ahk，请把 AHI 放到 lib\ 下")
         if (InterceptionDllPath() = "")
@@ -121,23 +151,29 @@ class InterceptionBackend extends IInputBackend {
 
         vid := settings.Has("interception_vid") ? settings["interception_vid"] : 0
         pid := settings.Has("interception_pid") ? settings["interception_pid"] : 0
+        instance := settings.Has("interception_instance") ? settings["interception_instance"] : 1
         if (!vid || !pid)
-            throw Error("脚本里没写 #InterceptionVid / #InterceptionPid。`n"
-                . "跑一下项目根目录的 Monitor.ahk，在你的键盘上按个键，就能看到 VID/PID。")
+            throw KeyboardNotConfiguredError("脚本里没写硬输入键盘。")
+        if (!IsInteger(instance) || instance < 1)
+            throw KeyboardNotConfiguredError("硬输入键盘实例号无效。")
 
-        this.AHI := AutoHotInterception()
+        this.AHI := CreateAutoHotInterception()
 
         ; 不用 AHI.GetKeyboardId()：它找不到设备时会 MsgBox + ExitApp。
         ; GetDeviceList() 只是查询，安全。
-        this.id := this.FindKeyboard(vid, pid)
+        this.id := this.FindKeyboard(vid, pid, instance)
         if !this.id
-            throw Error(Format("没找到 VID=0x{:04X} PID=0x{:04X} 的键盘。用 Monitor.ahk 确认一下。", vid, pid))
+            throw KeyboardNotConfiguredError("没有找到脚本里配置的硬输入键盘。")
     }
 
-    FindKeyboard(vid, pid) {
+    FindKeyboard(vid, pid, instance := 1) {
+        found := 0
         for id, dev in this.AHI.GetDeviceList() {
-            if (!dev.IsMouse && dev.VID = vid && dev.PID = pid)
-                return id
+            if (!dev.IsMouse && dev.VID = vid && dev.PID = pid) {
+                found += 1
+                if (found = instance)
+                    return id
+            }
         }
         return 0
     }
