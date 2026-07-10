@@ -19,6 +19,8 @@ Config  := ""
 Paused  := false
 Backend := ""
 InterceptionUrl := "https://github.com/oblitum/Interception/releases"
+HotkeyPause := "F8"      ; 帮助/托盘要用，Main 里按脚本设置覆盖
+HotkeyExit  := "^!x"
 
 ; 只有直接运行 main.ahk 时才启动；被 selftest.ahk #Include 时不启动。
 if (A_IsCompiled || A_LineFile = A_ScriptFullPath)
@@ -86,25 +88,27 @@ Main() {
 
     RegisterHotkeys()
 
-    pauseKey := settings.Has("pause_key") ? settings["pause_key"] : "F8"
-    exitKey  := settings.Has("exit_key")  ? settings["exit_key"]  : "^!x"
+    global HotkeyPause, HotkeyExit
+    HotkeyPause := settings.Has("pause_key") ? settings["pause_key"] : "F8"
+    HotkeyExit  := settings.Has("exit_key")  ? settings["exit_key"]  : "^!x"
 
-    if (pauseKey != "")
-        SafeHotkey(pauseKey, TogglePause)
-    if (exitKey != "")
-        SafeHotkey(exitKey, (*) => ExitApp())
+    if (HotkeyPause != "")
+        SafeHotkey(HotkeyPause, TogglePause)
+    if (HotkeyExit != "")
+        SafeHotkey(HotkeyExit, (*) => ExitApp())
 
-    ; 查前台窗口进程名，顺便复制到剪贴板，方便填 active_window
+    ; 辅助功能热键（托盘菜单里也都有，不用记）
     SafeHotkey("^!w", ShowActiveProcess)
     SafeHotkey("^!k", ShowKeyInspector)
     SafeHotkey("^!e", ShowCurrentScriptEditor)
     SafeHotkey("^!r", RecordSnippet)
+    SafeHotkey("^!h", ShowHelp)
 
-    SetupTray(pauseKey)
+    SetupTray()
     OnExit(OnExitHandler)
 
-    TrayTip(Format("后端: {1}`n暂停/恢复: {2}`n退出: {3}`n查进程: Ctrl+Alt+W`n识别按键: Ctrl+Alt+K`n编辑: Ctrl+Alt+E`n录制: Ctrl+Alt+R`n重载: 托盘菜单",
-        Type(Backend), pauseKey, exitKey), AppName " 已启动")
+    TrayTip("右键托盘图标 = 全部功能和快捷键`n或按 Ctrl+Alt+H 打开帮助",
+        AppName " 已启动（后端: " Type(Backend) "）")
 }
 
 
@@ -209,15 +213,81 @@ WriteTextFile(path, text) {
 }
 
 
-SetupTray(pauseKey) {
+; 托盘右键菜单 = 全部功能。每项都标了快捷键，不用背。
+SetupTray() {
+    global HotkeyPause, HotkeyExit
     tray := A_TrayMenu
     tray.Delete()                                  ; 去掉 AHK 默认项，换成我们自己的
+    tray.Add("识别按键`tCtrl+Alt+K", (*) => ShowKeyInspector())
+    tray.Add("查前台进程`tCtrl+Alt+W", (*) => ShowActiveProcess())
+    tray.Add("录制按键`tCtrl+Alt+R", (*) => RecordSnippet())
+    tray.Add()
     tray.Add("编辑脚本`tCtrl+Alt+E", (*) => ShowCurrentScriptEditor())
     tray.Add("重载脚本", ReloadScript)
-    tray.Add("暂停/恢复`t" pauseKey, TogglePause)
+    tray.Add("暂停/恢复`t" HumanHotkey(HotkeyPause), TogglePause)
     tray.Add()
-    tray.Add("退出", (*) => ExitApp())
-    tray.Default := "编辑脚本`tCtrl+Alt+E"
+    tray.Add("帮助 / 全部功能`tCtrl+Alt+H", (*) => ShowHelp())
+    tray.Add("退出`t" HumanHotkey(HotkeyExit), (*) => ExitApp())
+    tray.Default := "帮助 / 全部功能`tCtrl+Alt+H"
+}
+
+
+; AHK 修饰符写法转成人能读的：^!x -> Ctrl+Alt+X，F8 -> F8
+HumanHotkey(hk) {
+    prefixes := Map("^", "Ctrl+", "!", "Alt+", "+", "Shift+", "#", "Win+")
+    out := ""
+    i := 1
+    while (i <= StrLen(hk) && prefixes.Has(SubStr(hk, i, 1))) {
+        out .= prefixes[SubStr(hk, i, 1)]
+        i++
+    }
+    base := SubStr(hk, i)
+    return out (StrLen(base) = 1 ? StrUpper(base) : base)
+}
+
+
+; 一个窗口列出所有功能和快捷键，回答「有啥功能」。Ctrl+Alt+H 或托盘菜单打开。
+ShowHelp(*) {
+    global AppName, Backend, HotkeyPause, HotkeyExit
+    q := Chr(34)
+    backendName := (Type(Backend) = "InterceptionBackend") ? "Interception 驱动级输入" : "SendInput 普通输入"
+
+    text := "当前输入后端：" backendName "`r`n"
+        . "──────────────────────────────`r`n"
+        . "全局快捷键（任何时候按都生效）：`r`n`r`n"
+        . "  Ctrl+Alt+K   识别按键：按任意键，实时显示它叫什么、怎么写进脚本`r`n"
+        . "  Ctrl+Alt+W   复制前台窗口进程名（填 #HotIf WinActive 用）`r`n"
+        . "  Ctrl+Alt+R   录制按键片段到剪贴板（含按住时长），按 Esc 停`r`n"
+        . "  Ctrl+Alt+E   打开脚本编辑器`r`n"
+        . "  Ctrl+Alt+H   打开本帮助`r`n"
+        . "  " Pad(HumanHotkey(HotkeyPause)) " 暂停 / 恢复全部宏`r`n"
+        . "  " Pad(HumanHotkey(HotkeyExit)) " 退出（退出时会松开所有按下的键）`r`n`r`n"
+        . "托盘图标右键：上面的功能都能直接点，不用记快捷键。`r`n"
+        . "──────────────────────────────`r`n"
+        . "写脚本 (.dxm)：`r`n`r`n"
+        . "  NumpadAdd::                ← 热键：按小键盘 +`r`n"
+        . "      Send " q "{Right}" q "          ← 发一个方向键`r`n"
+        . "      Sleep 80               ← 等 80 毫秒`r`n"
+        . "      Tap Right 50           ← 按住 50ms 再松`r`n"
+        . "  Return`r`n`r`n"
+        . "  动作：Send / Sleep / Tap 键名 毫秒 / KeyDown / KeyUp / Call`r`n"
+        . "  只在某程序生效：#HotIf WinActive(" q "游戏.exe" q ")`r`n"
+        . "  不知道某个键叫什么？按 Ctrl+Alt+K 一按就知道。"
+
+    g := Gui("+AlwaysOnTop", AppName " · 帮助 / 全部功能")
+    g.SetFont("s10", "Consolas")
+    g.AddEdit("w620 h440 ReadOnly -Wrap", text)
+    g.SetFont("s9", "Segoe UI")
+    g.AddButton("w100", "关闭").OnEvent("Click", (*) => g.Destroy())
+    g.Show()
+}
+
+
+; 左对齐补空格，让帮助里快捷键那两行对齐（可配置的暂停/退出键长度不定）
+Pad(s, width := 12) {
+    while (StrLen(s) < width)
+        s .= " "
+    return s
 }
 
 
@@ -341,7 +411,7 @@ ValidateConfig(config) {
 
 
 ReservedHotkeys(settings) {
-    out := Map("^!w", "查窗口", "^!k", "识别按键", "^!e", "编辑器", "^!r", "录制")
+    out := Map("^!w", "查窗口", "^!k", "识别按键", "^!e", "编辑器", "^!r", "录制", "^!h", "帮助")
     pauseKey := settings.Has("pause_key") ? settings["pause_key"] : "F8"
     exitKey := settings.Has("exit_key") ? settings["exit_key"] : "^!x"
     if (pauseKey != "")

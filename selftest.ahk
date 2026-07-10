@@ -46,6 +46,10 @@ RunSelfTest() {
     Assert(BaseKey("~*F9")      = "F9",      "BaseKey ~*F9 -> F9")
     Assert(ParseHotIf('WinActive("sample-app.exe")') = "sample-app.exe", "HotIf WinActive exe 简写")
 
+    ; 帮助/托盘显示用的快捷键格式化
+    Assert(HumanHotkey("^!x") = "Ctrl+Alt+X", "HumanHotkey ^!x -> Ctrl+Alt+X")
+    Assert(HumanHotkey("F8")  = "F8",         "HumanHotkey F8 原样")
+
     ; 2. 脚本读进来了
     cfg := Config["hotkeys"]["Numpad0"][1]
     Assert(RegExMatch(cfg["active_window"], "i)\.exe$"), "config active_window")

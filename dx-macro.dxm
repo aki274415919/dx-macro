@@ -18,7 +18,7 @@ Numpad0::
     Send "{Left}"
 Return
 
-NumpadEnter::
+NumpadAdd::
     Send "{Right}"
     Sleep 80
     Send "{Right}"
